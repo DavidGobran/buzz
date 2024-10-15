@@ -254,15 +254,17 @@ class RecordingTranscriberWidget(QWidget):
             self.start_recording()
             self.current_status = self.RecordingStatus.RECORDING
             self.record_button.set_recording()
-            self.transcription_options_group_box.hide()
-            self.transcription_text_box.hide()
-            self.recording_options_layout.hide()
+            if self.transcription_options.enable_llm_translation:
+                self.transcription_options_group_box.hide()
+                self.transcription_text_box.hide()
+                self.recording_options_layout.hide()
         else:  # RecordingStatus.RECORDING
             self.stop_recording()
             self.set_recording_status_stopped()
-            self.transcription_options_group_box.show()
-            self.transcription_text_box.show()
-            self.recording_options_layout.show()
+            if self.transcription_options.enable_llm_translation:
+                self.transcription_options_group_box.show()
+                self.transcription_text_box.show()
+                self.recording_options_layout.show()
 
     def start_recording(self):
         self.record_button.setDisabled(True)
