@@ -250,21 +250,26 @@ class RecordingTranscriberWidget(QWidget):
         self.recording_amplitude_listener.start_recording()
 
     def on_record_button_clicked(self):
-        if self.current_status == self.RecordingStatus.STOPPED:
-            self.start_recording()
-            self.current_status = self.RecordingStatus.RECORDING
-            self.record_button.set_recording()
-            if self.transcription_options.enable_llm_translation:
-                self.transcription_options_group_box.hide()
-                self.transcription_text_box.hide()
-                self.recording_options_layout.hide()
-        else:  # RecordingStatus.RECORDING
-            self.stop_recording()
-            self.set_recording_status_stopped()
-            if self.transcription_options.enable_llm_translation:
-                self.transcription_options_group_box.show()
-                self.transcription_text_box.show()
-                self.recording_options_layout.show()
+        try:
+            if self.current_status == self.RecordingStatus.STOPPED:
+                self.start_recording()
+                self.current_status = self.RecordingStatus.RECORDING
+                self.record_button.set_recording()
+                if self.transcription_options.enable_llm_translation:
+                    logging.debug("Hiding UI elements for LLM translation")
+                    self.transcription_options_group_box.hide()
+                    self.transcription_text_box.hide()
+                    self.recording_options_layout.hide()
+            else:  # RecordingStatus.RECORDING
+                self.stop_recording()
+                self.set_recording_status_stopped()
+                if self.transcription_options.enable_llm_translation:
+                    logging.debug("Showing UI elements for LLM translation")
+                    self.transcription_options_group_box.show()
+                    self.transcription_text_box.show()
+                    self.recording_options_layout.show()
+        except Exception as e:
+            logging.error(f"Error occurred in on_record_button_clicked: {e}")
 
     def start_recording(self):
         self.record_button.setDisabled(True)
