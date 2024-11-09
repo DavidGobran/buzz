@@ -263,8 +263,6 @@ class RecordingTranscriberWidget(QWidget):
         self.audio_devices_combo_box.hide()
         self.transcription_text_box.hide()
         self.transcription_options_group_box.hide()
-        self.audio_meter_widget.hide()
-        self.record_button.hide()
 
         # Only show the translation text box
         self.translation_text_box.show()
@@ -525,8 +523,6 @@ class RecordingTranscriberWidget(QWidget):
         self.audio_devices_combo_box.show()
         self.transcription_text_box.show()
         self.transcription_options_group_box.show()
-        self.audio_meter_widget.show()
-        self.record_button.show()
 
         # Force the UI to refresh
         QCoreApplication.processEvents()
