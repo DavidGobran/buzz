@@ -7,7 +7,7 @@ import sounddevice
 from enum import auto
 from typing import Optional, Tuple, Any
 
-from PyQt6.QtCore import QThread, Qt, QThreadPool
+from PyQt6.QtCore import QThread, Qt, QThreadPool, QCoreApplication
 from PyQt6.QtGui import QTextCursor, QCloseEvent
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QFormLayout, QHBoxLayout, QMessageBox
 
@@ -259,6 +259,19 @@ class RecordingTranscriberWidget(QWidget):
             self.set_recording_status_stopped()
 
     def start_recording(self):
+        # Hide UI elements except for the translation text box
+        self.audio_devices_combo_box.hide()
+        self.transcription_text_box.hide()
+        self.transcription_options_group_box.hide()
+        self.audio_meter_widget.hide()
+        self.record_button.hide()
+
+        # Only show the translation text box
+        self.translation_text_box.show()
+
+        # Force the UI to refresh
+        QCoreApplication.processEvents()
+
         self.record_button.setDisabled(True)
         self.transcripts = []
         self.translations = []
@@ -507,6 +520,16 @@ class RecordingTranscriberWidget(QWidget):
 
         if self.translator is not None:
             self.translator.stop()
+
+        # Restore UI visibility
+        self.audio_devices_combo_box.show()
+        self.transcription_text_box.show()
+        self.transcription_options_group_box.show()
+        self.audio_meter_widget.show()
+        self.record_button.show()
+
+        # Force the UI to refresh
+        QCoreApplication.processEvents()
 
         # Disable record button until the transcription is actually stopped in the background
         self.record_button.setDisabled(True)
