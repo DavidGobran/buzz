@@ -45,7 +45,7 @@ class GeneralPreferencesWidget(QWidget):
 
         self.font_size_spin_box = QSpinBox(self)
         self.font_size_spin_box.setMinimum(8)
-        self.font_size_spin_box.setMaximum(32)
+        self.font_size_spin_box.setMaximum(64)
         self.font_size_spin_box.setValue(self.font().pointSize())
         self.font_size_spin_box.valueChanged.connect(self.on_font_size_changed)
 
