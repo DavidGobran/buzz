@@ -58,12 +58,11 @@ jobs:
             ~/AppData/Local/Buzz/Buzz/Cache
           key: whisper-models
 
-      - uses: FedericoCarboni/setup-ffmpeg@v3.1
+      - uses: AnimMouse/setup-ffmpeg@v1.2.1
         id: setup-ffmpeg
-        with:
-          ffmpeg-version: release
-          architecture: 'x64'
-          github-token: ${{ github.server_url == 'https://github.com' && github.token || '' }}
+
+      - name: Test ffmpeg
+        run: ffmpeg -i ./testdata/audio-long.mp3 ./testdata/audio-long.wav
 
       - name: Install dependencies
         run: poetry install

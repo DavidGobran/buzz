@@ -395,23 +395,19 @@ def download_faster_whisper_model(
 
     if size == WhisperModelSize.CUSTOM:
         repo_id = custom_repo_id
-    elif size == WhisperModelSize.LARGEV3:
-        repo_id = "Systran/faster-whisper-large-v3"
-    # Maybe switch to 'mobiuslabsgmbh/faster-whisper-large-v3-turbo', seems to be used in
-    #  faster-whisper code https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/utils.py#L29
-    #  If so changes needed also in whisper_file_transcriber.py
+    # Replicating models from faster-whisper code https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/utils.py#L29
+    # Changes to turbo model also in whisper_file_transcriber.py
     elif size == WhisperModelSize.LARGEV3TURBO:
-        repo_id = "deepdml/faster-whisper-large-v3-turbo-ct2"
+        repo_id = "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
     else:
-        repo_id = "guillaumekln/faster-whisper-%s" % size
+        repo_id = "Systran/faster-whisper-%s" % size
 
     allow_patterns = [
         "model.bin",  # largest by size first
         "pytorch_model.bin",  # possible alternative model filename
         "config.json",
         "tokenizer.json",
-        "vocabulary.txt",
-        "vocabulary.json",
+        "vocabulary.*",
     ]
 
     if local_files_only:
@@ -562,13 +558,10 @@ class ModelDownloader(QRunnable):
                     f"{file_path} exists, but the SHA256 checksum does not match; re-downloading the file"
                 )
 
-        tmp_file = tempfile.mktemp()
-        logging.debug("Downloading to temporary file = %s", tmp_file)
-
         # Downloads the model using the requests module instead of urllib to
         # use the certs from certifi when the app is running in frozen mode
         with requests.get(url, stream=True, timeout=15) as source, open(
-            tmp_file, "wb"
+            file_path, "wb"
         ) as output:
             source.raise_for_status()
             total_size = float(source.headers.get("Content-Length", 0))
@@ -582,7 +575,7 @@ class ModelDownloader(QRunnable):
                 self.signals.progress.emit((current, total_size))
 
         if expected_sha256 is not None:
-            model_bytes = open(tmp_file, "rb").read()
+            model_bytes = open(file_path, "rb").read()
             if hashlib.sha256(model_bytes).hexdigest() != expected_sha256:
                 raise RuntimeError(
                     "Model has been downloaded but the SHA256 checksum does not match. Please retry loading the "
@@ -591,9 +584,6 @@ class ModelDownloader(QRunnable):
 
         logging.debug("Downloaded model")
 
-        # https://github.com/chidiwilliams/buzz/issues/454
-        shutil.move(tmp_file, file_path)
-        logging.debug("Moved file from %s to %s", tmp_file, file_path)
         return True
 
     def cancel(self):

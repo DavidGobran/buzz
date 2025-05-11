@@ -39,7 +39,7 @@ from buzz.widgets.transcriber.transcription_options_group_box import (
 )
 
 REAL_CHARS_REGEX = re.compile(r'\w')
-NO_SPACE_BETWEEN_SENTENCES = re.compile(r'([.!?])([A-Z])')
+NO_SPACE_BETWEEN_SENTENCES = re.compile(r'([.!?。！？])([A-Z])')
 
 
 class RecordingTranscriberWidget(QWidget):
@@ -273,6 +273,9 @@ class RecordingTranscriberWidget(QWidget):
         self.record_button.setDisabled(True)
         self.transcripts = []
         self.translations = []
+
+        self.transcription_text_box.clear()
+        self.translation_text_box.clear()
 
         if self.export_enabled:
             self.setup_for_export()

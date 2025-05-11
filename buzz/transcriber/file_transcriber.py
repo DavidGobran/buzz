@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import subprocess
 import shutil
 import tempfile
@@ -35,14 +36,19 @@ class FileTranscriber(QObject):
             temp_output_path = tempfile.mktemp()
             wav_file = temp_output_path + ".wav"
 
-            ydl = YoutubeDL(
-                {
-                    "format": "bestaudio/best",
-                    "progress_hooks": [self.on_download_progress],
-                    "outtmpl": temp_output_path,
-                    "logger": logging.getLogger()
-                }
-            )
+            cookiefile = os.getenv("BUZZ_DOWNLOAD_COOKIEFILE")
+
+            options = {
+                "format": "bestaudio/best",
+                "progress_hooks": [self.on_download_progress],
+                "outtmpl": temp_output_path,
+                "logger": logging.getLogger(),
+            }
+
+            if cookiefile:
+                options["cookiefile"] = cookiefile
+
+            ydl = YoutubeDL(options)
 
             try:
                 logging.debug(f"Downloading audio file from URL: {self.transcription_task.url}")
@@ -63,7 +69,13 @@ class FileTranscriber(QObject):
                 "-loglevel", "panic",
                 wav_file]
 
-            result = subprocess.run(cmd, capture_output=True)
+            if sys.platform == "win32":
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                si.wShowWindow = subprocess.SW_HIDE
+                result = subprocess.run(cmd, capture_output=True, startupinfo=si)
+            else:
+                result = subprocess.run(cmd, capture_output=True)
 
             if len(result.stderr):
                 logging.warning(f"Error processing downloaded audio. Error: {result.stderr.decode()}")

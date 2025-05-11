@@ -45,7 +45,7 @@ Linux versions get also pushed to the snap. To install latest development versio
 
 1. Clone the repository `git clone --recursive https://github.com/chidiwilliams/buzz.git`
 2. Enter repo folder `cd buzz`
-3. Install Poetry `sudo apt-get install python3-poetry`
+3. Install Poetry `pipx install poetry`
 4. Activate the virtual environment `poetry shell`
 5. Install the dependencies `poetry install`
 6. Install system dependencies you may be missing 
@@ -113,20 +113,18 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 13. Build Buzz `poetry build`
 14. Run Buzz `python -m buzz`
 
+Note: It should be safe to ignore any "syntax errors" you see during the build. Buzz will work. Also you can ignore any errors for FFmpeg. Buzz tries to load FFmpeg by several different means and some of them throw errors, but FFmpeg should eventually be found and work. 
+
 #### GPU Support
 
-GPU support on Windows is possible for Buzz that ir installed from the source code or with `pip`.
-Use the instructions above to install the Buzz from the source code or run `pip install buzz-captions` 
-and then follow the instructions below to enable CUDA GPU support. For pip installation it is recommended to use 
-a separate [virtual environment](https://packaging.python.org/en/latest/guides/installing-using-pip-and-virtual-environments/).
+GPU support on Windows with Nvidia GPUs is included out of the box in the `.exe` installer. 
 
-To enable GPU support first ensure CUDA 12.1 is installed - https://developer.nvidia.com/cuda-12-1-0-download-archive 
-Other versions of CUDA 12 should also work.
+To add GPU support for source or `pip` installed version first ensure at least CUDA 12.1 is installed - https://developer.nvidia.com/cuda-12-1-0-download-archive
 
 Switch torch library to GPU version. It must match the CUDA version installed, see https://pytorch.org/get-started/locally/ .
 ```
 pip3 uninstall torch torchaudio  
-pip3 install torch==2.2.1+cu121 torchaudio==2.2.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+pip3 install torch==2.2.2+cu121 torchaudio==2.2.2+cu121 --index-url https://download.pytorch.org/whl/cu121
 ```
 
 To use Faster Whisper on GPU, install the following libraries:

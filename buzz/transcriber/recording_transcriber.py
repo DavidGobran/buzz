@@ -70,11 +70,14 @@ class RecordingTranscriber(QObject):
         model_path = self.model_path
         keep_samples = int(self.keep_sample_seconds * self.sample_rate)
 
+        force_cpu = os.getenv("BUZZ_FORCE_CPU", "false")
+        use_cuda = torch.cuda.is_available() and force_cpu == "false"
+
         if torch.cuda.is_available():
             logging.debug(f"CUDA version detected: {torch.version.cuda}")
 
         if self.transcription_options.model.model_type == ModelType.WHISPER:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            device = "cuda" if use_cuda else "cpu"
             model = whisper.load_model(model_path, device=device)
         elif self.transcription_options.model.model_type == ModelType.WHISPER_CPP:
             model = WhisperCpp(model_path)
@@ -84,12 +87,11 @@ class RecordingTranscriber(QObject):
             model_root_dir = os.getenv("BUZZ_MODEL_ROOT", model_root_dir)
 
             device = "auto"
-            if platform.system() == "Windows":
-                logging.debug("CUDA GPUs are currently no supported on Running on Windows, using CPU")
-                device = "cpu"
-
             if torch.cuda.is_available() and torch.version.cuda < "12":
                 logging.debug("Unsupported CUDA version (<12), using CPU")
+                device = "cpu"
+
+            if force_cpu != "false":
                 device = "cpu"
 
             model = faster_whisper.WhisperModel(
@@ -151,8 +153,6 @@ class RecordingTranscriber(QObject):
                         )
                         time_started = datetime.datetime.now()
 
-                        # TODO Filter out silent audio
-
                         if (
                                 self.transcription_options.model.model_type
                                 == ModelType.WHISPER
@@ -164,6 +164,7 @@ class RecordingTranscriber(QObject):
                                 task=self.transcription_options.task.value,
                                 initial_prompt=initial_prompt,
                                 temperature=self.transcription_options.temperature,
+                                no_speech_threshold=0.4
                             )
                         elif (
                                 self.transcription_options.model.model_type
@@ -190,6 +191,7 @@ class RecordingTranscriber(QObject):
                                 temperature=self.transcription_options.temperature,
                                 initial_prompt=self.transcription_options.initial_prompt,
                                 word_timestamps=self.transcription_options.word_level_timings,
+                                no_speech_threshold=0.4,
                             )
                             result = {"text": " ".join([segment.text for segment in whisper_segments])}
                         elif (

@@ -1,3 +1,5 @@
+[[简体中文](readme/README.zh_CN.md)] <- 点击查看中文页面。
+
 # Buzz
 
 [Documentation](https://chidiwilliams.github.io/buzz/) | [Buzz Captions on the App Store](https://apps.apple.com/us/app/buzz-captions/id6446018936?mt=12&itsct=apps_box_badge&itscg=30200)
@@ -20,17 +22,18 @@ OpenAI's [Whisper](https://github.com/openai/whisper).
 
 ## Installation
 
-**PyPI**:
+### PyPI
 
 Install [ffmpeg](https://www.ffmpeg.org/download.html)
 
 Install Buzz
+
 ```shell
 pip install buzz-captions
 python -m buzz
 ```
 
-**macOS**:
+### macOS
 
 Install with [brew utility](https://brew.sh/)
 
@@ -40,19 +43,53 @@ brew install --cask buzz
 
 Or download the `.dmg` from the [releases page](https://github.com/chidiwilliams/buzz/releases/latest).
 
-**Windows**:
+### Windows
 
 Download and run the `.exe` from the [releases page](https://github.com/chidiwilliams/buzz/releases/latest).
 
 App is not signed, you will get a warning when you install it. Select `More info` -> `Run anyway`.
 
-**Linux**:
+**Alternatively, install with [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/)**
 
+```shell
+winget install ChidiWilliams.Buzz
+```
+
+**GPU support for PyPI**
+
+To have GPU support for Nvidia GPUS on Windows, for PyPI installed version ensure, CUDA support for [torch](https://pytorch.org/get-started/locally/) 
+
+```
+pip3 uninstall torch torchaudio
+pip3 install torch==2.2.2+cu121 torchaudio==2.2.2+cu121 nvidia-cublas-cu12==12.1.3.1 nvidia-cuda-cupti-cu12==12.1.105 nvidia-cuda-nvrtc-cu12==12.1.105 nvidia-cuda-runtime-cu12==12.1.105 nvidia-cufft-cu12==11.0.2.54 nvidia-curand-cu12==10.3.2.106 nvidia-cusolver-cu12==11.4.5.107 nvidia-cusparse-cu12==12.1.0.106 nvidia-nccl-cu12==2.19.3 nvidia-nvtx-cu12==12.1.105  --extea-index-url https://download.pytorch.org/whl/cu121 --extea-index-url https://pypi.ngc.nvidia.com
+```
+
+### Linux
+
+Buzz is available as a [Flatpak](https://flathub.org/apps/io.github.chidiwilliams.Buzz) or a [Snap](https://snapcraft.io/buzz). 
+
+To install flatpak, run:
+```shell
+flatpak install flathub io.github.chidiwilliams.Buzz
+```
+
+To install snap, run:
 ```shell
 sudo apt-get install libportaudio2 libcanberra-gtk-module libcanberra-gtk3-module
 sudo snap install buzz
-sudo snap connect buzz:audio-record
 sudo snap connect buzz:password-manager-service
-sudo snap connect buzz:pulseaudio
-sudo snap connect buzz:removable-media
 ```
+
+### Latest development version
+
+For info on how to get latest development version with latest features and bug fixes see [FAQ](https://chidiwilliams.github.io/buzz/docs/faq#9-where-can-i-get-latest-development-version).
+
+### Screenshots
+
+<div style="display: flex; flex-wrap: wrap;">
+    <img alt="File import" src="share/screenshots/buzz-1-import.png" style="max-width: 18%; margin-right: 1%;" />
+    <img alt="Main screen" src="share/screenshots/buzz-2-main_screen.png" style="max-width: 18%; margin-right: 1%; height:auto;" />
+    <img alt="Preferences" src="share/screenshots/buzz-3-preferences.png" style="max-width: 18%; margin-right: 1%; height:auto;" />
+    <img alt="Transcript" src="share/screenshots/buzz-4-transcript.png" style="max-width: 18%; margin-right: 1%; height:auto;" />
+    <img alt="Live recording" src="share/screenshots/buzz-5-live_recording.png" style="max-width: 18%;" />
+</div>

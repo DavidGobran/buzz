@@ -1,10 +1,13 @@
 import logging
 import multiprocessing
 import queue
+from pathlib import Path
 from typing import Optional, Tuple, List, Set
 from uuid import UUID
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
+
+from demucs import api as demucsApi
 
 from buzz.model_loader import ModelType
 from buzz.transcriber.file_transcriber import FileTranscriber
@@ -52,6 +55,28 @@ class FileTranscriberQueueWorker(QObject):
                 continue
 
             break
+
+        if self.current_task.transcription_options.extract_speech:
+            logging.debug("Will extract speech")
+
+            def separator_progress_callback(progress):
+                self.task_progress.emit(self.current_task, int(progress["segment_offset"] * 100) / int(progress["audio_length"] * 100))
+
+            try:
+                # This will fail on Windows 10 and Mac with SSL cert error
+                separator = demucsApi.Separator(
+                    progress=True,
+                    callback=separator_progress_callback,
+                )
+                _, separated = separator.separate_audio_file(Path(self.current_task.file_path))
+
+                task_file_path = Path(self.current_task.file_path)
+                speech_path = task_file_path.with_name(f"{task_file_path.stem}_speech.mp3")
+                demucsApi.save_audio(separated["vocals"], speech_path, separator.samplerate)
+
+                self.current_task.file_path = str(speech_path)
+            except Exception as e:
+                logging.error(f"Error during speech extraction: {e}", exc_info=True)
 
         logging.debug("Starting next transcription task")
 

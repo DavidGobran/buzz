@@ -141,21 +141,21 @@ class WhisperFileTranscriber(FileTranscriber):
         if task.transcription_options.model.whisper_model_size == WhisperModelSize.CUSTOM:
             model_size_or_path = task.transcription_options.model.hugging_face_model_id
         elif task.transcription_options.model.whisper_model_size == WhisperModelSize.LARGEV3TURBO:
-            model_size_or_path = "deepdml/faster-whisper-large-v3-turbo-ct2"
+            model_size_or_path = "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
         else:
             model_size_or_path = task.transcription_options.model.whisper_model_size.to_faster_whisper_model_size()
 
         model_root_dir = user_cache_dir("Buzz")
         model_root_dir = os.path.join(model_root_dir, "models")
         model_root_dir = os.getenv("BUZZ_MODEL_ROOT", model_root_dir)
+        force_cpu = os.getenv("BUZZ_FORCE_CPU", "false")
 
         device = "auto"
-        if platform.system() == "Windows":
-            logging.debug("CUDA GPUs are currently no supported on Running on Windows, using CPU")
-            device = "cpu"
-
         if torch.cuda.is_available() and torch.version.cuda < "12":
             logging.debug("Unsupported CUDA version (<12), using CPU")
+            device = "cpu"
+
+        if force_cpu != "false":
             device = "cpu"
 
         model = faster_whisper.WhisperModel(
@@ -170,6 +170,7 @@ class WhisperFileTranscriber(FileTranscriber):
             temperature=task.transcription_options.temperature,
             initial_prompt=task.transcription_options.initial_prompt,
             word_timestamps=task.transcription_options.word_level_timings,
+            no_speech_threshold=0.4,
         )
         segments = []
         with tqdm.tqdm(total=round(info.duration, 2), unit=" seconds") as pbar:
@@ -200,7 +201,10 @@ class WhisperFileTranscriber(FileTranscriber):
 
     @classmethod
     def transcribe_openai_whisper(cls, task: FileTranscriptionTask) -> List[Segment]:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        force_cpu = os.getenv("BUZZ_FORCE_CPU", "false")
+        use_cuda = torch.cuda.is_available() and force_cpu == "false"
+
+        device = "cuda" if use_cuda else "cpu"
         model = whisper.load_model(task.model_path, device=device)
 
         if task.transcription_options.word_level_timings:
@@ -211,6 +215,7 @@ class WhisperFileTranscriber(FileTranscriber):
                 task=task.transcription_options.task.value,
                 temperature=task.transcription_options.temperature,
                 initial_prompt=task.transcription_options.initial_prompt,
+                no_speech_threshold=0.4,
             )
             return [
                 Segment(

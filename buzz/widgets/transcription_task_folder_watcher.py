@@ -6,6 +6,7 @@ from PyQt6.QtCore import QFileSystemWatcher, pyqtSignal, QObject
 
 from buzz.store.keyring_store import Key, get_password
 from buzz.transcriber.transcriber import FileTranscriptionTask
+from buzz.model_loader import ModelDownloader
 from buzz.widgets.preferences_dialog.models.folder_watch_preferences import (
     FolderWatchPreferences,
 )
@@ -41,6 +42,10 @@ class TranscriptionTaskFolderWatcher(QFileSystemWatcher):
     def find_tasks(self):
         input_directory = self.preferences.input_directory
         tasks = {task.file_path: task for task in self.tasks.values()}
+
+        if not self.preferences.enabled:
+            return
+
         for dirpath, dirnames, filenames in os.walk(input_directory):
             for filename in filenames:
                 file_path = os.path.join(dirpath, filename)
@@ -60,6 +65,11 @@ class TranscriptionTaskFolderWatcher(QFileSystemWatcher):
                     file_paths=[file_path],
                 )
                 model_path = transcription_options.model.get_local_model_path()
+
+                if model_path is None:
+                    ModelDownloader(model=transcription_options.model).run()
+                    model_path = transcription_options.model.get_local_model_path()
+
                 task = FileTranscriptionTask(
                     file_path=file_path,
                     transcription_options=transcription_options,

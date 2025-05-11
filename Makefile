@@ -48,14 +48,13 @@ endif
 COVERAGE_THRESHOLD := 75
 
 test: buzz/whisper_cpp.py translation_mo
-	pytest -s -vv --cov=buzz --cov-report=xml --cov-report=html --benchmark-skip --cov-fail-under=${COVERAGE_THRESHOLD}
+	pytest -s -vv --cov=buzz --cov-report=xml --cov-report=html --benchmark-skip --cov-fail-under=${COVERAGE_THRESHOLD} --cov-config=.coveragerc
 
 benchmarks: buzz/whisper_cpp.py translation_mo
 	pytest -s -vv --benchmark-only --benchmark-json benchmarks.json
 
 dist/Buzz dist/Buzz.app: buzz/whisper_cpp.py translation_mo
 	pyinstaller --noconfirm Buzz.spec
-	./dist/Buzz/Buzz --version
 
 version:
 	poetry version ${version}
@@ -202,6 +201,7 @@ gh_upgrade_pr:
 # Internationalization
 
 translation_po_all:
+	$(MAKE) translation_po locale=en_US
 	$(MAKE) translation_po locale=ca_ES
 	$(MAKE) translation_po locale=es_ES
 	$(MAKE) translation_po locale=pl_PL
@@ -211,12 +211,20 @@ translation_po_all:
 	$(MAKE) translation_po locale=lv_LV
 	$(MAKE) translation_po locale=uk_UA
 	$(MAKE) translation_po locale=ja_JP
+	$(MAKE) translation_po locale=da_DK
+	$(MAKE) translation_po locale=de_DE
+	$(MAKE) translation_po locale=nl
 
 TMP_POT_FILE_PATH := $(shell mktemp)
 PO_FILE_PATH := buzz/locale/${locale}/LC_MESSAGES/buzz.po
 translation_po:
+	mkdir -p buzz/locale/${locale}/LC_MESSAGES
 	xgettext --from-code=UTF-8 -o "${TMP_POT_FILE_PATH}" -l python $(shell find buzz -name '*.py')
-	sed -i.bak 's/CHARSET/UTF-8/' ${TMP_POT_FILE_PATH} && rm ${TMP_POT_FILE_PATH}.bak
+	sed -i.bak 's/CHARSET/UTF-8/' ${TMP_POT_FILE_PATH}
+	if [ ! -f ${PO_FILE_PATH} ]; then \
+		msginit --no-translator --input=${TMP_POT_FILE_PATH} --output-file=${PO_FILE_PATH}; \
+	fi
+	rm ${TMP_POT_FILE_PATH}.bak
 	msgmerge -U ${PO_FILE_PATH} ${TMP_POT_FILE_PATH}
 
 # On windows we can have two ways to compile locales, one for CI the other for local builds
