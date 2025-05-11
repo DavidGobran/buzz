@@ -15,6 +15,8 @@ concurrency:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    env:
+      BUZZ_DISABLE_TELEMETRY: true
     strategy:
       fail-fast: false
       matrix:
@@ -63,6 +65,11 @@ jobs:
 
       - name: Test ffmpeg
         run: ffmpeg -i ./testdata/audio-long.mp3 ./testdata/audio-long.wav
+
+      - name: Downgrade torch for Intel macOS
+        run: |
+          poetry add torch==2.2.2 torchaudio==2.2.2
+        if: "matrix.os == 'macos-13'"
 
       - name: Install dependencies
         run: poetry install

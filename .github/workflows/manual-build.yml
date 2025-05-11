@@ -9,6 +9,8 @@ concurrency:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    env:
+      BUZZ_DISABLE_TELEMETRY: true
     strategy:
       fail-fast: false
       matrix:
