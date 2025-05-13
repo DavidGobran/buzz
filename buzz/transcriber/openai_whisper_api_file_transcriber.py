@@ -153,7 +153,17 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
                 else self.openai_client.audio.translations.create(**options)
             )
 
-            segments_data = transcript.model_extra.get("segments")
+            # Handle translation responses (no segments) and transcription responses
+            if self.transcription_task.transcription_options.task != Task.TRANSCRIBE:
+                # Translation: return the full translated text as a single segment
+                text = transcript.get("text") or getattr(transcript, "text", None)
+                if text is None:
+                    logging.error("No 'text' in OpenAI Whisper API translation response: %s", transcript)
+                    return []
+                return [Segment(offset_ms, offset_ms, text)]
+
+            # Transcription: expect detailed segments in model_extra
+            segments_data = transcript.model_extra.get("segments", [])
             if not segments_data:
                 logging.error("No 'segments' key found in OpenAI Whisper API response: %s", transcript.model_extra)
                 return []
