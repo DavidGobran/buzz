@@ -153,13 +153,18 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
                 else self.openai_client.audio.translations.create(**options)
             )
 
+            segments_data = transcript.model_extra.get("segments")
+            if not segments_data:
+                logging.error("No 'segments' key found in OpenAI Whisper API response: %s", transcript.model_extra)
+                return []
+
             return [
                 Segment(
                     int(segment["start"] * 1000 + offset_ms),
                     int(segment["end"] * 1000 + offset_ms),
                     segment["text"],
                 )
-                for segment in transcript["segments"]
+                for segment in segments_data
             ]
 
     def stop(self):
