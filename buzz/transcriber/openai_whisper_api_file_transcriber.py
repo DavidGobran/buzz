@@ -159,7 +159,7 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
                     int(segment["end"] * 1000 + offset_ms),
                     segment["text"],
                 )
-                for segment in transcript.model_extra["segments"]
+                for segment in transcript["segments"]
             ]
 
     def stop(self):
