@@ -124,6 +124,15 @@ class GeneralPreferencesWidget(QWidget):
         self.custom_openai_base_url_line_edit.setPlaceholderText("https://api.openai.com/v1")
         layout.addRow(_("OpenAI base url"), self.custom_openai_base_url_line_edit)
 
+        # Custom OpenAI Whisper model name
+        self.custom_openai_model = self.settings.value(
+            key=Settings.Key.CUSTOM_OPENAI_MODEL, default_value=""
+        )
+        self.custom_openai_model_line_edit = LineEdit(self.custom_openai_model, self)
+        self.custom_openai_model_line_edit.textChanged.connect(self.on_custom_openai_model_changed)
+        self.custom_openai_model_line_edit.setPlaceholderText("whisper-1")
+        layout.addRow(_("OpenAI Whisper model"), self.custom_openai_model_line_edit)
+
         default_export_file_name = self.settings.get_default_export_file_template()
 
         default_export_file_name_line_edit = LineEdit(default_export_file_name, self)
@@ -221,6 +230,9 @@ class GeneralPreferencesWidget(QWidget):
 
     def on_custom_openai_base_url_changed(self, text: str):
         self.settings.set_value(Settings.Key.CUSTOM_OPENAI_BASE_URL, text)
+
+    def on_custom_openai_model_changed(self, text: str):
+        self.settings.set_value(Settings.Key.CUSTOM_OPENAI_MODEL, text)
 
     def on_recording_export_enable_changed(self, state: int):
         self.recording_export_enabled = state == 2

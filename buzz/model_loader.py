@@ -22,6 +22,7 @@ from platformdirs import user_cache_dir
 from huggingface_hub.errors import LocalEntryNotFoundError
 
 from buzz.locale import _
+from buzz.settings.settings import Settings
 
 # Catch exception from whisper.dll not getting loaded.
 # TODO: Remove flag and try-except when issue with loading
@@ -607,7 +608,12 @@ class ModelDownloader(QRunnable):
 
 
 def get_custom_api_whisper_model(base_url: str):
+    # Use custom Whisper model name if set in preferences
+    settings = Settings()
+    custom_model = settings.value(Settings.Key.CUSTOM_OPENAI_MODEL, "")
+    if custom_model:
+        return custom_model
+    # Fallback based on base URL
     if "api.groq.com" in base_url:
         return "whisper-large-v3"
-
     return "whisper-1"
