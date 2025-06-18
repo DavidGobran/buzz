@@ -19,7 +19,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from buzz import whisper_audio
 from buzz.model_loader import WhisperModelSize, ModelType, get_custom_api_whisper_model
 from buzz.settings.settings import Settings
-from buzz.transcriber.transcriber import TranscriptionOptions, Task
+from buzz.transcriber.transcriber import TranscriptionOptions, Task, Segment
 from buzz.transcriber.whisper_cpp import WhisperCpp
 from buzz.transformers_whisper import TransformersWhisper
 from buzz.settings.recording_transcriber_mode import RecordingTranscriberMode
@@ -30,6 +30,7 @@ import faster_whisper
 
 class RecordingTranscriber(QObject):
     transcription = pyqtSignal(str)
+    segment_transcribed = pyqtSignal(list)
     finished = pyqtSignal()
     error = pyqtSignal(str)
     is_running = False
@@ -251,8 +252,25 @@ class RecordingTranscriber(QObject):
                                         else self.openai_client.audio.translations.create(**options)
                                     )
 
-                                    result = {"text": " ".join(
-                                        [segment["text"] for segment in transcript.model_extra["segments"]])}
+                                    # Build Segment objects from API response
+                                    raw_segments = None
+                                    if hasattr(transcript, 'segments'):
+                                        raw_segments = transcript.segments
+                                    elif 'segments' in transcript.model_extra:
+                                        raw_segments = transcript.model_extra['segments']
+                                    raw_segments = raw_segments or []
+                                    segments = [
+                                        Segment(
+                                            int(seg.get('start', 0) * 1000),
+                                            int(seg.get('end', 0) * 1000),
+                                            seg.get('text', '')
+                                        )
+                                        for seg in raw_segments
+                                    ]
+                                    # Emit segment list like file transcriber
+                                    self.segment_transcribed.emit(segments)
+                                    # Also concatenate text for backward compatibility
+                                    result = {"text": " ".join([seg.text for seg in segments])}
                                 except Exception as e:
                                     result = {"text": f"Error: {str(e)}"}
 
