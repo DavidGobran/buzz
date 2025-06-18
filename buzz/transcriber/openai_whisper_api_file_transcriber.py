@@ -13,6 +13,7 @@ from buzz.settings.settings import Settings
 from buzz.model_loader import get_custom_api_whisper_model
 from buzz.transcriber.file_transcriber import FileTranscriber
 from buzz.transcriber.transcriber import FileTranscriptionTask, Segment, Task
+from buzz.transcriber.whisper_cpp import append_segment
 
 
 class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
@@ -28,6 +29,7 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
             base_url=custom_openai_base_url if custom_openai_base_url else None
         )
         self.whisper_api_model = get_custom_api_whisper_model(custom_openai_base_url)
+        self.word_level_timings = self.transcription_task.transcription_options.word_level_timings
         logging.debug("Will use whisper API on %s, %s",
                       custom_openai_base_url, self.whisper_api_model)
 
@@ -136,6 +138,12 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
 
         return segments
 
+    @staticmethod
+    def get_value(segment, key):
+        if hasattr(segment, key):
+            return getattr(segment, key)
+        return segment[key]
+
     def get_segments_for_file(self, file: str, offset_ms: int = 0):
         with open(file, "rb") as file:
             options = {
@@ -144,6 +152,10 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
                 "response_format": "verbose_json",
                 "prompt": self.transcription_task.transcription_options.initial_prompt,
             }
+
+            if self.word_level_timings:
+                options["timestamp_granularities"] = ["word"]
+
             transcript = (
                 self.openai_client.audio.transcriptions.create(
                     **options,
@@ -153,29 +165,79 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
                 else self.openai_client.audio.translations.create(**options)
             )
 
-            # Handle translation responses (no segments) and transcription responses
-            if self.transcription_task.transcription_options.task != Task.TRANSCRIBE:
-                # Translation: return the full translated text as a single segment
-                text = transcript.get("text") or getattr(transcript, "text", None)
-                if text is None:
-                    logging.error("No 'text' in OpenAI Whisper API translation response: %s", transcript)
-                    return []
-                return [Segment(offset_ms, offset_ms, text)]
+            segments = getattr(transcript, "segments", None)
 
-            # Transcription: expect detailed segments in model_extra
-            segments_data = transcript.model_extra.get("segments", [])
-            if not segments_data:
-                logging.error("No 'segments' key found in OpenAI Whisper API response: %s", transcript.model_extra)
-                return []
+            words = getattr(transcript, "words", None)
+            if "words" is None and "words" in transcript.model_extra:
+                words = transcript.model_extra["words"]
 
-            return [
-                Segment(
-                    int(segment["start"] * 1000 + offset_ms),
-                    int(segment["end"] * 1000 + offset_ms),
-                    segment["text"],
-                )
-                for segment in segments_data
-            ]
+            if segments is None:
+                if "segments" in transcript.model_extra:
+                    segments = transcript.model_extra["segments"]
+                else:
+                    segments = [{"words": words}]
+
+            result_segments = []
+            if self.word_level_timings:
+
+                # Detect response from whisper.cpp API
+                first_segment = segments[0] if segments else None
+                is_whisper_cpp = (first_segment and hasattr(first_segment, "tokens")
+                                  and hasattr(first_segment, "avg_logprob") and hasattr(first_segment, "no_speech_prob"))
+
+                if is_whisper_cpp:
+                    txt_buffer = b''
+                    txt_start = 0
+                    txt_end = 0
+
+                    for segment in segments:
+                        for word in self.get_value(segment, "words"):
+
+                            txt = self.get_value(word, "word").encode("utf-8")
+                            start = self.get_value(word, "start")
+                            end = self.get_value(word, "end")
+
+                            if txt.startswith(b' ') and append_segment(result_segments, txt_buffer, txt_start, txt_end):
+                                txt_buffer = txt
+                                txt_start = start
+                                txt_end = end
+                                continue
+
+                            if txt.startswith(b', '):
+                                txt_buffer += b','
+                                append_segment(result_segments, txt_buffer, txt_start, txt_end)
+                                txt_buffer = txt.lstrip(b',')
+                                txt_start = start
+                                txt_end = end
+                                continue
+
+                            txt_buffer += txt
+                            txt_end = end
+
+                        # Append the last segment
+                        append_segment(result_segments, txt_buffer, txt_start, txt_end)
+
+                else:
+                    for segment in segments:
+                        for word in self.get_value(segment, "words"):
+                            result_segments.append(
+                                Segment(
+                                    int(self.get_value(word, "start") * 1000 + offset_ms),
+                                    int(self.get_value(word, "end") * 1000 + offset_ms),
+                                    self.get_value(word, "word"),
+                                )
+                            )
+            else:
+                result_segments = [
+                    Segment(
+                        int(self.get_value(segment, "start") * 1000 + offset_ms),
+                        int(self.get_value(segment,"end") * 1000 + offset_ms),
+                        self.get_value(segment,"text"),
+                    )
+                    for segment in segments
+                ]
+
+            return result_segments
 
     def stop(self):
         pass

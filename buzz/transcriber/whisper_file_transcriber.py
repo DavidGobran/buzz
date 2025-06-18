@@ -140,8 +140,6 @@ class WhisperFileTranscriber(FileTranscriber):
     def transcribe_faster_whisper(cls, task: FileTranscriptionTask) -> List[Segment]:
         if task.transcription_options.model.whisper_model_size == WhisperModelSize.CUSTOM:
             model_size_or_path = task.transcription_options.model.hugging_face_model_id
-        elif task.transcription_options.model.whisper_model_size == WhisperModelSize.LARGEV3TURBO:
-            model_size_or_path = "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
         else:
             model_size_or_path = task.transcription_options.model.whisper_model_size.to_faster_whisper_model_size()
 
@@ -162,8 +160,11 @@ class WhisperFileTranscriber(FileTranscriber):
             model_size_or_path=model_size_or_path,
             download_root=model_root_dir,
             device=device,
+            cpu_threads=(os.cpu_count() or 8)//2,
         )
-        whisper_segments, info = model.transcribe(
+
+        batched_model = faster_whisper.BatchedInferencePipeline(model=model)
+        whisper_segments, info = batched_model.transcribe(
             audio=task.file_path,
             language=task.transcription_options.language,
             task=task.transcription_options.task.value,
@@ -171,32 +172,31 @@ class WhisperFileTranscriber(FileTranscriber):
             initial_prompt=task.transcription_options.initial_prompt,
             word_timestamps=task.transcription_options.word_level_timings,
             no_speech_threshold=0.4,
+            log_progress=True,
         )
         segments = []
-        with tqdm.tqdm(total=round(info.duration, 2), unit=" seconds") as pbar:
-            for segment in list(whisper_segments):
-                # Segment will contain words if word-level timings is True
-                if segment.words:
-                    for word in segment.words:
-                        segments.append(
-                            Segment(
-                                start=int(word.start * 1000),
-                                end=int(word.end * 1000),
-                                text=word.word,
-                                translation=""
-                            )
-                        )
-                else:
+        for segment in whisper_segments:
+            # Segment will contain words if word-level timings is True
+            if segment.words:
+                for word in segment.words:
                     segments.append(
                         Segment(
-                            start=int(segment.start * 1000),
-                            end=int(segment.end * 1000),
-                            text=segment.text,
+                            start=int(word.start * 1000),
+                            end=int(word.end * 1000),
+                            text=word.word,
                             translation=""
                         )
                     )
+            else:
+                segments.append(
+                    Segment(
+                        start=int(segment.start * 1000),
+                        end=int(segment.end * 1000),
+                        text=segment.text,
+                        translation=""
+                    )
+                )
 
-                pbar.update(segment.end - segment.start)
         return segments
 
     @classmethod
@@ -256,6 +256,10 @@ class WhisperFileTranscriber(FileTranscriber):
         while True:
             try:
                 line = pipe.recv().strip()
+
+                # Uncomment to debug
+                # print(f"*** DEBUG ***: {line}")
+
             except EOFError:  # Connection closed
                 break
 

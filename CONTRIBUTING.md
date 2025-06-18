@@ -45,16 +45,21 @@ Linux versions get also pushed to the snap. To install latest development versio
 
 1. Clone the repository `git clone --recursive https://github.com/chidiwilliams/buzz.git`
 2. Enter repo folder `cd buzz`
-3. Install Poetry `pipx install poetry`
-4. Activate the virtual environment `poetry shell`
-5. Install the dependencies `poetry install`
-6. Install system dependencies you may be missing 
+3. Create virtual environment `python -m venv venv` (needs to be done only the first time)
+4. Add fix for nvidia cudnn library path to the virtual environment
+```
+echo 'export LD_LIBRARY_PATH="$VIRTUAL_ENV/lib/python3.12/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH"' >> venv/bin/activate
+```
+5. Activate the virtual environment `source venv/bin/activate`
+6. Install Poetry `pip install poetry`
+7. Install the dependencies `poetry install`
+8. Install system dependencies you may be missing 
 ```
 sudo apt-get install --no-install-recommends libyaml-dev libtbb-dev libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-shape0 libxcb-cursor0 libportaudio2 gettext libpulse0 ffmpeg
 ```
 On versions prior to Ubuntu 24.04 install `sudo apt-get install --no-install-recommends libegl1-mesa`
-7. Build Buzz `poetry build`
-8. Run Buzz `python -m buzz`
+8. Build Buzz `poetry build`
+9. Run Buzz `python -m buzz`
 
 #### Necessary dependencies for Faster Whisper on GPU
 
@@ -75,12 +80,13 @@ On versions prior to Ubuntu 24.04 install `sudo apt-get install --no-install-rec
 
 1. Clone the repository `git clone --recursive https://github.com/chidiwilliams/buzz.git`
 2. Enter repo folder `cd buzz`
-3. Install Poetry `brew install poetry`
-4. Activate the virtual environment `poetry shell`
-5. Install the dependencies `poetry install`
-6. Install system dependencies you may be missing `brew install ffmpeg`
-7. Build Buzz `poetry build`
-8. Run Buzz `python -m buzz`
+3. Create virtual environment `python -m venv venv` (needs to be done only the first time)
+4. Activate the virtual environment `source venv/bin/activate`
+5. Install Poetry `pip install poetry`
+6. Install the dependencies `poetry install`
+7. Install system dependencies you may be missing `brew install ffmpeg`
+8. Build Buzz `poetry build`
+9. Run Buzz `python -m buzz`
 
 
 
@@ -95,23 +101,15 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManage
 2. Install the GNU make. `choco install make`
 3. Install the ffmpeg. `choco install ffmpeg`
 4. Install [MSYS2](https://www.msys2.org/), follow [this guide](https://sajidifti.medium.com/how-to-install-gcc-and-gdb-on-windows-using-msys2-tutorial-0fceb7e66454).
-5. Install Poetry, paste this info Windows PowerShell line by line. [More info](https://python-poetry.org/docs/)
-```
-(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -
-
-[Environment]::SetEnvironmentVariable("Path", $env:Path + ";%APPDATA%\pypoetry\venv\Scripts", "User")
-
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-6. Add poetry to PATH. `%APPDATA%\Python\Scripts`
-7. Restart Windows.
-8. Clone the repository `git clone --recursive https://github.com/chidiwilliams/buzz.git`
-9. Enter repo folder `cd buzz`
-10. Activate the virtual environment `poetry shell`
-11. Install the dependencies `poetry install`
-12. `cp -r .\dll_backup\ .\buzz\`
-13. Build Buzz `poetry build`
-14. Run Buzz `python -m buzz`
+5. Clone the repository `git clone --recursive https://github.com/chidiwilliams/buzz.git`
+6. Enter repo folder `cd buzz`
+7. Create virtual environment `python -m venv venv` (needs to be done only the first time)
+8. Activate the virtual environment `.\venv\Scripts\activate`
+9. Install Poetry `pip install poetry`
+10. Install the dependencies `poetry install`
+11. `cp -r .\dll_backup\ .\buzz\`
+12. Build Buzz `poetry build`
+13. Run Buzz `python -m buzz`
 
 Note: It should be safe to ignore any "syntax errors" you see during the build. Buzz will work. Also you can ignore any errors for FFmpeg. Buzz tries to load FFmpeg by several different means and some of them throw errors, but FFmpeg should eventually be found and work. 
 
