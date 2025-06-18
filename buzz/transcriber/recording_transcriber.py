@@ -259,14 +259,22 @@ class RecordingTranscriber(QObject):
                                     elif 'segments' in transcript.model_extra:
                                         raw_segments = transcript.model_extra['segments']
                                     raw_segments = raw_segments or []
-                                    segments = [
-                                        Segment(
-                                            int(seg.get('start', 0) * 1000),
-                                            int(seg.get('end', 0) * 1000),
-                                            seg.get('text', '')
+                                    segments = []
+                                    for seg in raw_segments:
+                                        # handle both object attributes and dicts
+                                        start_attr = getattr(seg, 'start', None)
+                                        end_attr = getattr(seg, 'end', None)
+                                        text_attr = getattr(seg, 'text', None)
+                                        start = start_attr if start_attr is not None else seg.get('start', 0)
+                                        end = end_attr if end_attr is not None else seg.get('end', 0)
+                                        text = text_attr if text_attr is not None else seg.get('text', '')
+                                        segments.append(
+                                            Segment(
+                                                int(start * 1000),
+                                                int(end * 1000),
+                                                text
+                                            )
                                         )
-                                        for seg in raw_segments
-                                    ]
                                     # Emit segment list like file transcriber
                                     self.segment_transcribed.emit(segments)
                                     # Also concatenate text for backward compatibility
