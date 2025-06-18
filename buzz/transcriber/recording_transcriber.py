@@ -235,10 +235,16 @@ class RecordingTranscriber(QObject):
                                 wf.writeframes(pcm_data)
 
                             with open(temp_filename, 'rb') as temp_file:
+                                # choose response_format based on model support
+                                fmt = (
+                                    "verbose_json"
+                                    if self.whisper_api_model.lower().startswith("whisper")
+                                    else "json"
+                                )
                                 options = {
                                     "model": self.whisper_api_model,
                                     "file": temp_file,
-                                    "response_format": "verbose_json",
+                                    "response_format": fmt,
                                     "prompt": self.transcription_options.initial_prompt,
                                 }
 
@@ -251,34 +257,25 @@ class RecordingTranscriber(QObject):
                                         if self.transcription_options.task == Task.TRANSCRIBE
                                         else self.openai_client.audio.translations.create(**options)
                                     )
-
-                                    # Build Segment objects from API response
-                                    raw_segments = None
-                                    if hasattr(transcript, 'segments'):
-                                        raw_segments = transcript.segments
-                                    elif 'segments' in transcript.model_extra:
-                                        raw_segments = transcript.model_extra['segments']
-                                    raw_segments = raw_segments or []
-                                    segments = []
-                                    for seg in raw_segments:
-                                        # handle both object attributes and dicts
-                                        start_attr = getattr(seg, 'start', None)
-                                        end_attr = getattr(seg, 'end', None)
-                                        text_attr = getattr(seg, 'text', None)
-                                        start = start_attr if start_attr is not None else seg.get('start', 0)
-                                        end = end_attr if end_attr is not None else seg.get('end', 0)
-                                        text = text_attr if text_attr is not None else seg.get('text', '')
-                                        segments.append(
-                                            Segment(
-                                                int(start * 1000),
-                                                int(end * 1000),
-                                                text
-                                            )
-                                        )
-                                    # Emit segment list like file transcriber
-                                    self.segment_transcribed.emit(segments)
-                                    # Also concatenate text for backward compatibility
-                                    result = {"text": " ".join([seg.text for seg in segments])}
+                                    if fmt == "verbose_json":
+                                        # Build Segment objects from detailed JSON
+                                        raw = getattr(transcript, 'segments', None)
+                                        if raw is None and hasattr(transcript, 'model_extra'):
+                                            raw = transcript.model_extra.get('segments', [])
+                                        segments = []
+                                        for seg in raw or []:
+                                            s = getattr(seg, 'start', seg.get('start', 0))
+                                            e = getattr(seg, 'end', seg.get('end', 0))
+                                            t = getattr(seg, 'text', seg.get('text', ''))
+                                            segments.append(Segment(int(s*1000), int(e*1000), t))
+                                        self.segment_transcribed.emit(segments)
+                                        result = {"text": " ".join([seg.text for seg in segments])}
+                                    else:
+                                        # simple JSON/text response
+                                        txt = getattr(transcript, 'text', None)
+                                        if txt is None and isinstance(transcript, dict):
+                                            txt = transcript.get('text', '')
+                                        result = {"text": txt or ""}
                                 except Exception as e:
                                     result = {"text": f"Error: {str(e)}"}
 
