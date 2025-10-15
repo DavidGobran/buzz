@@ -48,6 +48,9 @@ jobs:
       - name: Install dependencies
         run: poetry install
 
+      - name: Install Inno Setup
+        run: choco install innosetup
+
       - name: Bundle
         run: |
           if [ "$RUNNER_OS" == "macOS" ]; then
