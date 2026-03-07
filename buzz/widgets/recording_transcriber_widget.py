@@ -158,7 +158,8 @@ class RecordingTranscriberWidget(QWidget):
             self.on_transcription_options_changed
         )
 
-        recording_options_layout = QFormLayout()
+        self.recording_options_widget = QWidget(self)
+        recording_options_layout = QFormLayout(self.recording_options_widget)
         recording_options_layout.addRow(_("Microphone:"), self.audio_devices_combo_box)
 
         self.audio_meter_widget = AudioMeterWidget(self)
@@ -168,7 +169,7 @@ class RecordingTranscriberWidget(QWidget):
         record_button_layout.addWidget(self.record_button)
 
         layout.addWidget(self.transcription_options_group_box)
-        layout.addLayout(recording_options_layout)
+        layout.addWidget(self.recording_options_widget)
         layout.addLayout(record_button_layout)
         layout.addWidget(self.transcription_text_box)
         layout.addWidget(self.translation_text_box)
@@ -263,7 +264,8 @@ class RecordingTranscriberWidget(QWidget):
 
     def start_recording(self):
         # Hide UI elements except for the translation text box
-        self.audio_devices_combo_box.hide()
+        self.recording_options_widget.hide()
+        self.audio_meter_widget.hide()
         self.transcription_text_box.hide()
         self.transcription_options_group_box.hide()
 
@@ -550,7 +552,8 @@ class RecordingTranscriberWidget(QWidget):
             self.translator.stop()
 
         # Restore UI visibility
-        self.audio_devices_combo_box.show()
+        self.recording_options_widget.show()
+        self.audio_meter_widget.show()
         self.transcription_text_box.show()
         self.transcription_options_group_box.show()
 

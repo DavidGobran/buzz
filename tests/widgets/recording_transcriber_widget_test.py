@@ -31,6 +31,32 @@ class TestRecordingTranscriberWidget:
 
             widget.close()
 
+    def test_should_hide_microphone_and_volume_bar_when_recording(self, qtbot: QtBot):
+        with (patch("sounddevice.InputStream", side_effect=MockInputStream),
+              patch("buzz.transcriber.recording_transcriber.RecordingTranscriber.get_device_sample_rate",
+                    return_value=16_000),
+              patch("sounddevice.check_input_settings")):
+            widget = RecordingTranscriberWidget(
+                custom_sounddevice=MockSoundDevice()
+            )
+            qtbot.add_widget(widget)
+
+            assert widget.recording_options_widget.isVisible()
+            assert widget.audio_meter_widget.isVisible()
+
+            widget.start_recording()
+
+            assert not widget.recording_options_widget.isVisible()
+            assert not widget.audio_meter_widget.isVisible()
+
+            widget.stop_recording()
+
+            assert widget.recording_options_widget.isVisible()
+            assert widget.audio_meter_widget.isVisible()
+
+            time.sleep(3)
+            widget.close()
+
     @pytest.mark.skipif(
         platform.system() == "Darwin" and platform.mac_ver()[0].startswith('13.'),
         reason="Does not pick up mock sound device")
