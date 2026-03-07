@@ -15,8 +15,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # - os: macos-latest
-          - os: windows-latest
+          - os: macos-latest
+          # - os: windows-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,6 +45,12 @@ jobs:
           architecture: 'x64'
           github-token: ${{ github.server_url == 'https://github.com' && github.token || '' }}
 
+      - name: Generate poetry.lock
+        run: poetry lock
+
+      - name: Install setuptools
+        run: pip install setuptools
+        
       - name: Install dependencies
         run: poetry install
 

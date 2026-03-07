@@ -6,17 +6,22 @@ import shutil
 import tempfile
 from abc import abstractmethod
 from typing import Optional, List
+from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 from yt_dlp import YoutubeDL
 
-from buzz.whisper_audio import SAMPLE_RATE
+from buzz import whisper_audio
+from buzz.assets import APP_BASE_DIR
 from buzz.transcriber.transcriber import (
     FileTranscriptionTask,
     get_output_file_path,
     Segment,
     OutputFormat,
 )
+
+app_env = os.environ.copy()
+app_env['PATH'] = os.pathsep.join([os.path.join(APP_BASE_DIR, "_internal")] + [app_env['PATH']])
 
 
 class FileTranscriber(QObject):
@@ -33,10 +38,34 @@ class FileTranscriber(QObject):
     @pyqtSlot()
     def run(self):
         if self.transcription_task.source == FileTranscriptionTask.Source.URL_IMPORT:
-            temp_output_path = tempfile.mktemp()
-            wav_file = temp_output_path + ".wav"
-
             cookiefile = os.getenv("BUZZ_DOWNLOAD_COOKIEFILE")
+
+            # First extract info to get the video title
+            extract_options = {
+                "logger": logging.getLogger(),
+            }
+            if cookiefile:
+                extract_options["cookiefile"] = cookiefile
+
+            try:
+                with YoutubeDL(extract_options) as ydl_info:
+                    info = ydl_info.extract_info(self.transcription_task.url, download=False)
+                    video_title = info.get("title", "audio")
+            except Exception as exc:
+                logging.debug(f"Error extracting video info: {exc}")
+                video_title = "audio"
+
+            # Sanitize title for use as filename
+            video_title = YoutubeDL.sanitize_info({"title": video_title})["title"]
+            # Remove characters that are problematic in filenames
+            for char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|']:
+                video_title = video_title.replace(char, '_')
+
+            # Create temp directory and use video title as filename
+            temp_dir = tempfile.mkdtemp()
+            temp_output_path = os.path.join(temp_dir, video_title)
+            wav_file = temp_output_path + ".wav"
+            wav_file = str(Path(wav_file).resolve())
 
             options = {
                 "format": "bestaudio/best",
@@ -64,16 +93,23 @@ class FileTranscriber(QObject):
                 "-threads", "0",
                 "-i", temp_output_path,
                 "-ac", "1",
-                "-ar", str(SAMPLE_RATE),
+                "-ar", str(whisper_audio.SAMPLE_RATE),
                 "-acodec", "pcm_s16le",
                 "-loglevel", "panic",
-                wav_file]
+                wav_file
+            ]
 
             if sys.platform == "win32":
                 si = subprocess.STARTUPINFO()
                 si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 si.wShowWindow = subprocess.SW_HIDE
-                result = subprocess.run(cmd, capture_output=True, startupinfo=si)
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    startupinfo=si,
+                    env=app_env,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
             else:
                 result = subprocess.run(cmd, capture_output=True)
 
@@ -113,13 +149,22 @@ class FileTranscriber(QObject):
             )
 
         if self.transcription_task.source == FileTranscriptionTask.Source.FOLDER_WATCH:
-            shutil.move(
-                self.transcription_task.file_path,
-                os.path.join(
-                    self.transcription_task.output_directory,
-                    os.path.basename(self.transcription_task.file_path),
-                ),
+            # Use original_file_path if available (before speech extraction changed file_path)
+            source_path = (
+                self.transcription_task.original_file_path
+                or self.transcription_task.file_path
             )
+            if source_path and os.path.exists(source_path):
+                if self.transcription_task.delete_source_file:
+                    os.remove(source_path)
+                else:
+                    shutil.move(
+                        source_path,
+                        os.path.join(
+                            self.transcription_task.output_directory,
+                            os.path.basename(source_path),
+                        ),
+                    )
 
     def on_download_progress(self, data: dict):
         if data["status"] == "downloading":
@@ -134,7 +179,6 @@ class FileTranscriber(QObject):
         ...
 
 
-# TODO: Move to transcription service
 def write_output(
     path: str,
     segments: List[Segment],
@@ -153,8 +197,10 @@ def write_output(
             combined_text = ""
             previous_end_time = None
 
+            paragraph_split_time = int(os.getenv("BUZZ_PARAGRAPH_SPLIT_TIME", "2000"))
+            
             for segment in segments:
-                if previous_end_time is not None and (segment.start - previous_end_time) >= 2000:
+                if previous_end_time is not None and (segment.start - previous_end_time) >= paragraph_split_time:
                     combined_text += "\n\n"
                 combined_text += getattr(segment, segment_key).strip() + " "
                 previous_end_time = segment.end
@@ -188,3 +234,9 @@ def to_timestamp(ms: float, ms_separator=".") -> str:
     sec = int(ms / 1000)
     ms = int(ms - sec * 1000)
     return f"{hr:02d}:{min:02d}:{sec:02d}{ms_separator}{ms:03d}"
+
+# To detect when transcription source is a video
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".m4v", ".webm", ".ogm", ".wmv"}
+
+def is_video_file(path: str) -> bool:
+    return Path(path).suffix.lower() in VIDEO_EXTENSIONS

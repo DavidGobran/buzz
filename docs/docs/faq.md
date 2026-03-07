@@ -11,7 +11,7 @@ The models are stored:
 - Mac OS: `~/Library/Caches/Buzz`
 - Windows: `%USERPROFILE%\AppData\Local\Buzz\Buzz\Cache`
 
-Paste the location in your file manager to access the models.
+Paste the location in your file manager to access the models or go to `Help -> Preferences -> Models` and click on `Show file location` button after downloading some model.
 
 ### 2. What can I try if the transcription runs too slowly?
 
@@ -34,6 +34,12 @@ Relevant tools:
 Model size to use will depend on your hardware and use case. Smaller models will work faster but will have more inaccuracies. Larger models will be more accurate but will require more powerful hardware or longer time to transcribe.
 
 When choosing among large models consider the following. "Large" is the first released older model, "Large-V2" is later updated model with better accuracy, for some languages considered the most robust and stable. "Large-V3" is the latest model with the best accuracy in many cases, but some times can hallucinate or invent words that were never in the audio. "Turbo" model tries to get a good balance between speed and accuracy. The only sure way to know what model best suits your needs is to test them all in your language.
+
+In addition to choosing an appropriate model size you also can choose whisper type.
+- **Whisper** is initial OpenAI implementation, it is accurate but slow and requires a lot of RAM.
+- **Faster Whisper** is an optimized implementation, it is orders of magnitude faster than regular Whisper and requires less RAM. Use this option if you have an Nvidia GPU with at least 6GB of VRAM.
+- **Whisper.cpp** is optimized C++ implementation, it quite fast and efficient and will use any brand of GPU. Whisper.cpp is capable of running real time transcription even on a modern laptop with integrated GPU. It can also run on CPU only. Use this option if you do not have Nvidia GPU. 
+- **HuggingFace** option is a `Transformers` implementation and is good in that it supports wide range of custom models that may be optimized for a particular language. This option also supports [MMS](https://ai.meta.com/blog/multilingual-model-speech-recognition/) family of models from Meta AI that support over 1000 of worlds languages as well as [PEFT](https://github.com/huggingface/peft) adjustments to Whisper models.
 
 ### 5. How to get GPU acceleration for faster transcription?
 
@@ -59,7 +65,7 @@ Yes, Buzz can be used without internet connection if you download the necessary 
 
 If a model download was incomplete or corrupted, Buzz may crash. Try to delete the downloaded model files in `Help -> Preferences -> Models` and re-download them.
 
-If that does not help, check the log file for errors and [report the issue](https://github.com/chidiwilliams/buzz/issues) so we can fix it. The log file is located in `~/Library/Logs/Buzz` (Mac OS) or `%USERPROFILE%\AppData\Local\Buzz\Buzz\Logs` (Windows). On Linux run the Buzz from the command line to see the relevant messages.
+If that does not help, check the log file for errors and [report the issue](https://github.com/chidiwilliams/buzz/issues) so we can fix it. If possible attach the log file to the issue. Since Version `1.3.4`, to get to the logs folder go to `Help -> About Buzz` and click on `Show logs` button.
 
 ### 9. Where can I get latest development version?
 
@@ -84,4 +90,7 @@ gsettings set org.gnome.desktop.interface color-scheme prefer-dark
 
 If your system theme is not applied to Buzz installed from Flatpak Linux app store, ensure the desired theme is in `~/.themes` folder.
 
-You may need to copy the system themes to this folder `cp -r /usr/share/themes/ ~/.themes/`.
+You may need to copy the system themes to this folder `cp -r /usr/share/themes/ ~/.themes/` and give Flatpaks access to this folder `flatpak override --user --filesystem=~/.themes`.
+
+On Fedora run the following to install the necessary packages 
+`sudo dnf install gnome-themes-extra qadwaitadecorations-qt{5,6} qt{5,6}-qtwayland`

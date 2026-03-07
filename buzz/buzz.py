@@ -4,18 +4,32 @@ import multiprocessing
 import os
 import platform
 import sys
+from pathlib import Path
 from typing import TextIO
 
+# Set up CUDA library paths before any torch imports
+# This must happen before platformdirs or any other imports that might indirectly load torch
+import buzz.cuda_setup  # noqa: F401
+
 from platformdirs import user_log_dir, user_cache_dir, user_data_dir
+
+# Will download all Huggingface data to the app cache directory
+os.environ.setdefault("HF_HOME", user_cache_dir("Buzz"))
 
 from buzz.assets import APP_BASE_DIR
 
 # Check for segfaults if not running in frozen mode
-if getattr(sys, "frozen", False) is False:
+# Note: On Windows, faulthandler can print "Windows fatal exception" messages
+# for non-fatal RPC errors (0x800706be) during multiprocessing operations.
+# These are usually harmless but noisy, so we disable faulthandler on Windows.
+if getattr(sys, "frozen", False) is False and platform.system() != "Windows":
     faulthandler.enable()
 
-# Sets stderr to no-op TextIO when None (run as Windows GUI).
-# Resolves https://github.com/chidiwilliams/buzz/issues/221
+# Sets stdout/stderr to no-op TextIO when None (run as Windows GUI with --noconsole).
+# stdout fix: torch.hub uses sys.stdout.write() for download progress and crashes if None.
+# stderr fix: Resolves https://github.com/chidiwilliams/buzz/issues/221
+if sys.stdout is None:
+    sys.stdout = TextIO()
 if sys.stderr is None:
     sys.stderr = TextIO()
 
@@ -26,7 +40,14 @@ os.environ["PATH"] += os.pathsep + APP_BASE_DIR
 # Add the app directory to the DLL list: https://stackoverflow.com/a/64303856
 if platform.system() == "Windows":
     os.add_dll_directory(APP_BASE_DIR)
-    os.add_dll_directory(os.path.join(APP_BASE_DIR, "dll_backup"))
+
+    dll_backup_dir = os.path.join(APP_BASE_DIR, "dll_backup")
+    if os.path.isdir(dll_backup_dir):
+        os.add_dll_directory(dll_backup_dir)
+
+    onnx_dll_dir = os.path.join(APP_BASE_DIR, "onnxruntime", "capi")
+    if os.path.isdir(onnx_dll_dir):
+        os.add_dll_directory(onnx_dll_dir)
 
 
 def main():
@@ -48,6 +69,18 @@ def main():
         level=logging.DEBUG,
         format=log_format,
     )
+
+    # Silence noisy third-party library loggers
+    logging.getLogger("matplotlib").setLevel(logging.WARNING)
+    logging.getLogger("graphviz").setLevel(logging.WARNING)
+    logging.getLogger("nemo_logger").setLevel(logging.ERROR)
+    logging.getLogger("nemo_logging").setLevel(logging.ERROR)
+    logging.getLogger("numba").setLevel(logging.WARNING)
+    logging.getLogger("torio._extension.utils").setLevel(logging.WARNING)
+    logging.getLogger("export_config_manager").setLevel(logging.WARNING)
+    logging.getLogger("training_telemetry_provider").setLevel(logging.ERROR)
+    logging.getLogger("default_recorder").setLevel(logging.WARNING)
+    logging.getLogger("config").setLevel(logging.WARNING)
 
     if getattr(sys, "frozen", False) is False:
         stdout_handler = logging.StreamHandler(sys.stdout)

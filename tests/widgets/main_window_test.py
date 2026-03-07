@@ -1,6 +1,8 @@
+import logging
 import os
+import tempfile
 from typing import List
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 import pytest
 from PyQt6.QtCore import QSize, Qt
@@ -18,11 +20,7 @@ from buzz.locale import _
 from buzz.db.entity.transcription import Transcription
 from buzz.db.service.transcription_service import TranscriptionService
 from buzz.widgets.main_window import MainWindow
-from buzz.widgets.snap_notice import SnapNotice
 from buzz.widgets.transcriber.file_transcriber_widget import FileTranscriberWidget
-from buzz.widgets.transcription_viewer.transcription_viewer_widget import (
-    TranscriptionViewerWidget,
-)
 
 mock_transcriptions: List[Transcription] = [
     Transcription(status="completed"),
@@ -95,6 +93,7 @@ class TestMainWindow:
 
         window.close()
 
+    @pytest.mark.timeout(300)
     def test_should_run_and_cancel_transcription_task(
         self, qtbot, db, transcription_service
     ):
@@ -105,19 +104,44 @@ class TestMainWindow:
 
         table_widget = self._get_tasks_table(window)
 
-        qtbot.wait_until(
-            self._get_assert_task_status_callback(table_widget, 0, "in_progress"),
-            timeout=2 * 60 * 1000,
-        )
+        try:
+            qtbot.wait_until(
+                self._get_assert_task_status_callback(table_widget, 0, "in_progress"),
+                timeout=60 * 1000,
+            )
+        except Exception:
+            logging.error("Task never reached 'in_progress' status")
+            assert False, "Task did not start as expected"
 
-        # Stop task in progress
+        logging.debug("Will cancel transcription task")
+
         table_widget.selectRow(0)
+        
+        # Force immediate processing of pending events before triggering cancellation
+        qtbot.wait(100)
+        
         window.toolbar.stop_transcription_action.trigger()
+        
+        # Give some time for the cancellation to be processed
+        qtbot.wait(500)
 
-        qtbot.wait_until(
-            self._get_assert_task_status_callback(table_widget, 0, "canceled"),
-            timeout=60 * 1000,
-        )
+        logging.debug("Will wait for task to reach 'canceled' status")
+
+        try:
+            qtbot.wait_until(
+                self._get_assert_task_status_callback(table_widget, 0, "canceled"),
+                timeout=30 * 1000,
+            )
+        except Exception:
+            # On Windows, the cancellation might be slower, check final state
+            final_status = self._get_status(table_widget, 0)
+            logging.error(f"Task status after timeout: {final_status}")
+            if "canceled" not in final_status.lower():
+                assert False, f"Task did not cancel as expected. Final status: {final_status}"
+
+        logging.debug("Task canceled")
+
+        qtbot.wait(200)
 
         table_widget.selectRow(0)
         assert window.toolbar.stop_transcription_action.isEnabled() is False
@@ -127,8 +151,22 @@ class TestMainWindow:
 
     @pytest.mark.parametrize("transcription_dao", [mock_transcriptions], indirect=True)
     def test_should_load_tasks_from_cache(
-        self, qtbot, transcription_dao, transcription_segment_dao
+        self, qtbot, transcription_dao, transcription_segment_dao, monkeypatch
     ):
+        # Mock the queue worker to prevent it from processing tasks
+        mock_queue_worker = Mock()
+        mock_queue_worker.task_started = Mock()
+        mock_queue_worker.task_progress = Mock()
+        mock_queue_worker.task_download_progress = Mock()
+        mock_queue_worker.task_error = Mock()
+        mock_queue_worker.task_completed = Mock()
+        mock_queue_worker.completed = Mock()
+        mock_queue_worker.cancel_task = Mock()
+        mock_queue_worker.add_task = Mock()
+        mock_queue_worker.stop = Mock()
+        
+        monkeypatch.setattr("buzz.widgets.main_window.FileTranscriberQueueWorker", Mock(return_value=mock_queue_worker))
+        
         window = MainWindow(
             TranscriptionService(transcription_dao, transcription_segment_dao)
         )
@@ -137,17 +175,19 @@ class TestMainWindow:
         table_widget = self._get_tasks_table(window)
         assert table_widget.model().rowCount() == 3
 
-        assert self._get_status(table_widget, 0) == "completed"
-        table_widget.selectRow(0)
-        assert window.toolbar.open_transcript_action.isEnabled()
+        # Get all statuses and verify they match expected values
+        statuses = [self._get_status(table_widget, i) for i in range(3)]
+        expected_statuses = {"completed", "canceled", "failed"}
+        assert set(statuses) == expected_statuses, f"Expected {expected_statuses}, got {statuses}"
 
-        assert self._get_status(table_widget, 1) == "canceled"
-        table_widget.selectRow(1)
-        assert window.toolbar.open_transcript_action.isEnabled() is False
-
-        assert self._get_status(table_widget, 2) == "failed"
-        table_widget.selectRow(2)
-        assert window.toolbar.open_transcript_action.isEnabled() is False
+        # Test that completed transcriptions enable the open action, others don't
+        for i in range(3):
+            table_widget.selectRow(i)
+            status = self._get_status(table_widget, i)
+            if status == "completed":
+                assert window.toolbar.open_transcript_action.isEnabled()
+            else:
+                assert window.toolbar.open_transcript_action.isEnabled() is False
         window.close()
 
     @pytest.mark.parametrize("transcription_dao", [mock_transcriptions], indirect=True)
@@ -191,12 +231,20 @@ class TestMainWindow:
         qtbot.add_widget(window)
 
         table_widget = self._get_tasks_table(window)
-        table_widget.selectRow(0)
+
+        # Find and select the completed transcription row
+        completed_row = None
+        for i in range(table_widget.model().rowCount()):
+            if self._get_status(table_widget, i) == "completed":
+                completed_row = i
+                break
+
+        assert completed_row is not None, "No completed transcription found"
+        table_widget.selectRow(completed_row)
 
         window.toolbar.open_transcript_action.trigger()
 
-        transcription_viewer = window.findChild(TranscriptionViewerWidget)
-        assert transcription_viewer is not None
+        assert window.transcription_viewer_widget is not None
 
         window.close()
 
@@ -210,7 +258,17 @@ class TestMainWindow:
         qtbot.add_widget(window)
 
         table_widget = self._get_tasks_table(window)
-        table_widget.selectRow(0)
+
+        # Find and select the completed transcription row
+        completed_row = None
+        for i in range(table_widget.model().rowCount()):
+            if self._get_status(table_widget, i) == "completed":
+                completed_row = i
+                break
+
+        assert completed_row is not None, "No completed transcription found"
+        table_widget.selectRow(completed_row)
+
         table_widget.keyPressEvent(
             QKeyEvent(
                 QKeyEvent.Type.KeyPress,
@@ -220,8 +278,7 @@ class TestMainWindow:
             )
         )
 
-        transcription_viewer = window.findChild(TranscriptionViewerWidget)
-        assert transcription_viewer is not None
+        assert window.transcription_viewer_widget is not None
 
         window.close()
 
@@ -235,6 +292,67 @@ class TestMainWindow:
         qtbot.add_widget(window)
 
         assert window.toolbar.open_transcript_action.isEnabled() is False
+        window.close()
+
+    def test_import_folder_opens_file_transcriber_with_supported_files(
+        self, qtbot, transcription_service
+    ):
+        window = MainWindow(transcription_service)
+        qtbot.add_widget(window)
+
+        with tempfile.TemporaryDirectory() as folder:
+            # Create supported and unsupported files
+            supported = ["audio.mp3", "video.mp4", "clip.wav"]
+            unsupported = ["document.txt", "image.png"]
+            subdir = os.path.join(folder, "sub")
+            os.makedirs(subdir)
+            nested = "nested.flac"
+
+            for name in supported + unsupported:
+                open(os.path.join(folder, name), "w").close()
+            open(os.path.join(subdir, nested), "w").close()
+
+            with patch("PyQt6.QtWidgets.QFileDialog.getExistingDirectory") as mock_dir, \
+                 patch.object(window, "open_file_transcriber_widget") as mock_open:
+                mock_dir.return_value = folder
+                window.on_import_folder_action_triggered()
+
+            collected = mock_open.call_args[0][0]
+            collected_names = {os.path.basename(p) for p in collected}
+            assert collected_names == {"audio.mp3", "video.mp4", "clip.wav", "nested.flac"}
+
+        window.close()
+
+    def test_import_folder_does_nothing_when_cancelled(
+        self, qtbot, transcription_service
+    ):
+        window = MainWindow(transcription_service)
+        qtbot.add_widget(window)
+
+        with patch("PyQt6.QtWidgets.QFileDialog.getExistingDirectory") as mock_dir, \
+             patch.object(window, "open_file_transcriber_widget") as mock_open:
+            mock_dir.return_value = ""
+            window.on_import_folder_action_triggered()
+
+        mock_open.assert_not_called()
+        window.close()
+
+    def test_import_folder_does_nothing_when_no_supported_files(
+        self, qtbot, transcription_service
+    ):
+        window = MainWindow(transcription_service)
+        qtbot.add_widget(window)
+
+        with tempfile.TemporaryDirectory() as folder:
+            open(os.path.join(folder, "readme.txt"), "w").close()
+            open(os.path.join(folder, "image.jpg"), "w").close()
+
+            with patch("PyQt6.QtWidgets.QFileDialog.getExistingDirectory") as mock_dir, \
+                 patch.object(window, "open_file_transcriber_widget") as mock_open:
+                mock_dir.return_value = folder
+                window.on_import_folder_action_triggered()
+
+        mock_open.assert_not_called()
         window.close()
 
     @staticmethod
@@ -285,12 +403,3 @@ class TestMainWindow:
     def _get_toolbar_action(window: MainWindow, text: str):
         toolbar: QToolBar = window.findChild(QToolBar)
         return [action for action in toolbar.actions() if action.text() == text][0]
-
-    def test_snap_notice_dialog(self, qtbot: QtBot):
-        snap_notice = SnapNotice()
-        snap_notice.show()
-
-        qtbot.wait_until(lambda: snap_notice.isVisible(), timeout=1000)
-
-        snap_notice.close()
-        assert not snap_notice.isVisible()

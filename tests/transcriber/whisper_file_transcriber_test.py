@@ -3,7 +3,6 @@ import logging
 import os
 import platform
 import shutil
-import sys
 import tempfile
 import time
 from typing import List
@@ -22,9 +21,57 @@ from buzz.transcriber.transcriber import (
     FileTranscriptionOptions,
     Segment,
 )
-from buzz.transcriber.whisper_file_transcriber import WhisperFileTranscriber
+from buzz.transcriber.whisper_file_transcriber import (
+    WhisperFileTranscriber,
+    check_file_has_audio_stream,
+    PROGRESS_REGEX,
+)
 from tests.audio import test_audio_path
 from tests.model_loader import get_model_path
+
+
+class TestCheckFileHasAudioStream:
+    def test_valid_audio_file(self):
+        # Should not raise exception for valid audio file
+        check_file_has_audio_stream(test_audio_path)
+
+    def test_missing_file(self):
+        with pytest.raises(ValueError, match="File not found"):
+            check_file_has_audio_stream("/nonexistent/path/to/file.mp3")
+
+    def test_invalid_media_file(self):
+        # Create a temporary text file (not a valid media file)
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        try:
+            temp_file.write(b"This is not a valid media file")
+            temp_file.close()
+            with pytest.raises(ValueError, match="Invalid media file"):
+                check_file_has_audio_stream(temp_file.name)
+        finally:
+            os.unlink(temp_file.name)
+
+
+class TestProgressRegex:
+    def test_integer_percentage(self):
+        match = PROGRESS_REGEX.search("Progress: 50%")
+        assert match is not None
+        assert match.group() == "50%"
+
+    def test_decimal_percentage(self):
+        match = PROGRESS_REGEX.search("Progress: 75.5%")
+        assert match is not None
+        assert match.group() == "75.5%"
+
+    def test_no_match(self):
+        match = PROGRESS_REGEX.search("No percentage here")
+        assert match is None
+
+    def test_extract_percentage_value(self):
+        line = "Transcription progress: 85%"
+        match = PROGRESS_REGEX.search(line)
+        assert match is not None
+        percentage = int(match.group().strip("%"))
+        assert percentage == 85
 
 
 class TestWhisperFileTranscriber:
@@ -230,6 +277,9 @@ class TestWhisperFileTranscriber:
             assert len(segments[i].text) > 0
             logging.debug(f"{segments[i].start} {segments[i].end} {segments[i].text}")
 
+        transcriber.stop()
+        time.sleep(3)
+
     def test_transcribe_from_url(self, qtbot):
         url = (
             "https://github.com/chidiwilliams/buzz/raw/main/testdata/whisper-french.mp3"
@@ -270,6 +320,9 @@ class TestWhisperFileTranscriber:
             assert len(segments[i].text) > 0
             logging.debug(f"{segments[i].start} {segments[i].end} {segments[i].text}")
 
+        transcriber.stop()
+        time.sleep(3)
+
     def test_transcribe_from_folder_watch_source(self, qtbot):
         file_path = tempfile.mktemp(suffix=".mp3")
         shutil.copy(test_audio_path, file_path)
@@ -300,6 +353,45 @@ class TestWhisperFileTranscriber:
             os.path.join(output_directory, os.path.basename(file_path))
         )
         assert len(glob.glob("*.txt", root_dir=output_directory)) > 0
+
+        transcriber.stop()
+        time.sleep(3)
+
+    def test_transcribe_from_folder_watch_source_deletes_file(self, qtbot):
+        file_path = tempfile.mktemp(suffix=".mp3")
+        shutil.copy(test_audio_path, file_path)
+
+        file_transcription_options = FileTranscriptionOptions(
+            file_paths=[file_path],
+            output_formats={OutputFormat.TXT},
+        )
+        transcription_options = TranscriptionOptions()
+        model_path = get_model_path(transcription_options.model)
+
+        output_directory = tempfile.mkdtemp()
+        transcriber = WhisperFileTranscriber(
+            task=FileTranscriptionTask(
+                model_path=model_path,
+                transcription_options=transcription_options,
+                file_transcription_options=file_transcription_options,
+                file_path=file_path,
+                original_file_path=file_path,
+                output_directory=output_directory,
+                source=FileTranscriptionTask.Source.FOLDER_WATCH,
+                delete_source_file=True,
+            )
+        )
+        with qtbot.wait_signal(transcriber.completed, timeout=10 * 6000):
+            transcriber.run()
+
+        assert not os.path.isfile(file_path)
+        assert not os.path.isfile(
+            os.path.join(output_directory, os.path.basename(file_path))
+        )
+        assert len(glob.glob("*.txt", root_dir=output_directory)) > 0
+
+        transcriber.stop()
+        time.sleep(3)
 
     @pytest.mark.skip()
     def test_transcribe_stop(self):
@@ -335,3 +427,5 @@ class TestWhisperFileTranscriber:
 
         # Assert that file was not created
         assert os.path.isfile(output_file_path) is False
+
+        time.sleep(3)

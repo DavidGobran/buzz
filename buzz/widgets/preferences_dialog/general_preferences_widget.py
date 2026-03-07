@@ -42,6 +42,7 @@ ui_locales = {
     "ja_JP": _("Japanese"),
     "lv_LV": _("Latvian"),
     "pl_PL": _("Polish"),
+    "pt_BR": _("Portuguese (Brazil)"),
     "uk_UA": _("Ukrainian"),
     "zh_CN": _("Chinese (Simplified)"),
     "zh_TW": _("Chinese (Traditional)")
@@ -133,6 +134,18 @@ class GeneralPreferencesWidget(QWidget):
         self.custom_openai_model_line_edit.setPlaceholderText("whisper-1")
         layout.addRow(_("OpenAI Whisper model"), self.custom_openai_model_line_edit)
 
+        self.openai_api_model = self.settings.value(
+            key=Settings.Key.OPENAI_API_MODEL, default_value="whisper-1"
+        )
+
+        self.openai_api_model_line_edit = LineEdit(self.openai_api_model, self)
+        self.openai_api_model_line_edit.textChanged.connect(
+            self.on_openai_api_model_changed
+        )
+        self.openai_api_model_line_edit.setMinimumWidth(200)
+        self.openai_api_model_line_edit.setPlaceholderText("whisper-1")
+        layout.addRow(_("OpenAI API model"), self.openai_api_model_line_edit)
+
         default_export_file_name = self.settings.get_default_export_file_template()
 
         default_export_file_name_line_edit = LineEdit(default_export_file_name, self)
@@ -184,6 +197,39 @@ class GeneralPreferencesWidget(QWidget):
 
         layout.addRow(_("Live recording mode"), self.recording_transcriber_mode)
 
+        export_note_label = QLabel(
+            _("Note: Live recording export settings will be moved to the Advanced Settings in the Live Recording screen in a future version."),
+            self,
+        )
+        export_note_label.setWordWrap(True)
+        export_note_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        layout.addRow("", export_note_label)
+
+        self.reduce_gpu_memory_enabled = self.settings.value(
+            key=Settings.Key.REDUCE_GPU_MEMORY, default_value=False
+        )
+
+        self.reduce_gpu_memory_checkbox = QCheckBox(_("Use 8-bit quantization to reduce memory usage"))
+        self.reduce_gpu_memory_checkbox.setChecked(self.reduce_gpu_memory_enabled)
+        self.reduce_gpu_memory_checkbox.setObjectName("ReduceGPUMemoryCheckbox")
+        self.reduce_gpu_memory_checkbox.setToolTip(
+            _("Applies to Huggingface and Faster Whisper models. "
+              "Reduces GPU memory usage but may slightly decrease transcription quality.")
+        )
+        self.reduce_gpu_memory_checkbox.stateChanged.connect(self.on_reduce_gpu_memory_changed)
+        layout.addRow(_("Reduce GPU RAM"), self.reduce_gpu_memory_checkbox)
+
+        self.force_cpu_enabled = self.settings.value(
+            key=Settings.Key.FORCE_CPU, default_value=False
+        )
+
+        self.force_cpu_checkbox = QCheckBox(_("Use only CPU and disable GPU acceleration"))
+        self.force_cpu_checkbox.setChecked(self.force_cpu_enabled)
+        self.force_cpu_checkbox.setObjectName("ForceCPUCheckbox")
+        self.force_cpu_checkbox.setToolTip(_("Set this if larger models do not fit your GPU memory and Buzz crashes"))
+        self.force_cpu_checkbox.stateChanged.connect(self.on_force_cpu_changed)
+        layout.addRow(_("Disable GPU"), self.force_cpu_checkbox)
+
         self.setLayout(layout)
 
     def on_default_export_file_name_changed(self, text: str):
@@ -195,7 +241,7 @@ class GeneralPreferencesWidget(QWidget):
     def on_click_test_openai_api_key_button(self):
         self.test_openai_api_key_button.setEnabled(False)
 
-        job = TestOpenAIApiKeyJob(api_key=self.openai_api_key)
+        job = ValidateOpenAIApiKeyJob(api_key=self.openai_api_key)
         job.signals.success.connect(self.on_test_openai_api_key_success)
         job.signals.failed.connect(self.on_test_openai_api_key_failure)
         job.setAutoDelete(True)
@@ -233,6 +279,9 @@ class GeneralPreferencesWidget(QWidget):
 
     def on_custom_openai_model_changed(self, text: str):
         self.settings.set_value(Settings.Key.CUSTOM_OPENAI_MODEL, text)
+
+    def on_openai_api_model_changed(self, text: str):
+        self.settings.set_value(Settings.Key.OPENAI_API_MODEL, text)
 
     def on_recording_export_enable_changed(self, state: int):
         self.recording_export_enabled = state == 2
@@ -276,7 +325,28 @@ class GeneralPreferencesWidget(QWidget):
     def on_recording_transcriber_mode_changed(self, value):
         self.settings.set_value(Settings.Key.RECORDING_TRANSCRIBER_MODE, value)
 
-class TestOpenAIApiKeyJob(QRunnable):
+    def on_force_cpu_changed(self, state: int):
+        import os
+        self.force_cpu_enabled = state == 2
+        self.settings.set_value(Settings.Key.FORCE_CPU, self.force_cpu_enabled)
+
+        if self.force_cpu_enabled:
+            os.environ["BUZZ_FORCE_CPU"] = "true"
+        else:
+            os.environ.pop("BUZZ_FORCE_CPU", None)
+
+    def on_reduce_gpu_memory_changed(self, state: int):
+        import os
+        self.reduce_gpu_memory_enabled = state == 2
+        self.settings.set_value(Settings.Key.REDUCE_GPU_MEMORY, self.reduce_gpu_memory_enabled)
+
+        if self.reduce_gpu_memory_enabled:
+            os.environ["BUZZ_REDUCE_GPU_MEMORY"] = "true"
+        else:
+            os.environ.pop("BUZZ_REDUCE_GPU_MEMORY", None)
+
+
+class ValidateOpenAIApiKeyJob(QRunnable):
     class Signals(QObject):
         success = pyqtSignal()
         failed = pyqtSignal(str)
@@ -318,7 +388,7 @@ class TestOpenAIApiKeyJob(QRunnable):
             client = OpenAI(
                 api_key=self.api_key,
                 base_url=custom_openai_base_url if custom_openai_base_url else None,
-                timeout=5,
+                timeout=15,
             )
             client.models.list()
             self.signals.success.emit()

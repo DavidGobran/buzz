@@ -21,7 +21,7 @@ class Task(enum.Enum):
 
 
 TASK_LABEL_TRANSLATIONS = {
-    Task.TRANSLATE: _("Translate"),
+    Task.TRANSLATE: _("Translate to English"),
     Task.TRANSCRIBE: _("Transcribe"),
 }
 
@@ -153,6 +153,9 @@ class TranscriptionOptions:
     enable_llm_translation: bool = False
     llm_prompt: str = ""
     llm_model: str = ""
+    silence_threshold: float = 0.0025
+    line_separator: str = "\n\n"
+    transcription_step: float = 3.5
 
 
 def humanize_language(language: str) -> str:
@@ -199,6 +202,8 @@ class FileTranscriptionTask:
     output_directory: Optional[str] = None
     source: Source = Source.FILE_IMPORT
     file_path: Optional[str] = None
+    original_file_path: Optional[str] = None  # Original path before speech extraction
+    delete_source_file: bool = False
     url: Optional[str] = None
     fraction_downloaded: float = 0.0
 
@@ -213,8 +218,10 @@ class Stopped(Exception):
     pass
 
 
-SUPPORTED_AUDIO_FORMATS = "Audio files (*.mp3 *.wav *.m4a *.ogg *.opus *.flac);;\
-Video files (*.mp4 *.webm *.ogm *.mov *.mkv *.avi *.wmv);;All files (*.*)"
+SUPPORTED_AUDIO_FORMATS = "Media files (*.mp3 *.wav *.m4a *.ogg *.opus *.flac *.mp4 *.webm *.ogm *.mov *.mkv *.avi *.wmv);;\
+Audio files (*.mp3 *.wav *.m4a *.ogg *.opus *.flac);;\
+Video files (*.mp4 *.webm *.ogm *.mov *.mkv *.avi *.wmv);;\
+All files (*.*)"
 
 
 def get_output_file_path(
@@ -227,6 +234,9 @@ def get_output_file_path(
     export_file_name_template: str | None = None,
 ):
     input_file_name = os.path.splitext(os.path.basename(file_path))[0]
+    # Remove "_speech" suffix from extracted speech files
+    if input_file_name.endswith("_speech"):
+        input_file_name = input_file_name[:-7]
     date_time_now = datetime.datetime.now().strftime("%d-%b-%Y %H-%M-%S")
 
     export_file_name_template = (

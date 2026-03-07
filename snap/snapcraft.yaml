@@ -1,13 +1,15 @@
 # Development notes:
-# - To build the snap run `snapcraft clean` and `snapcraft`
+# - To build the snap run `snapcraft clean` and `snapcraft pack --verbose`
 # - To install local snap `snap install ./buzz_*.snap --dangerous`
 name: buzz
-base: core22
+base: core24
 version: git
+title: Buzz
 summary: Buzz, offline audio transcription and translation
 website: https://buzzcaptions.com
 source-code: https://github.com/chidiwilliams/buzz
 issues: https://github.com/chidiwilliams/buzz/issues
+contact: https://github.com/chidiwilliams
 description: |
   Buzz transcribes and translates audio to text offline using OpenAI's Whisper.
   Import audio and video files into Buzz and export them as TXT, SRT, or VTT files.
@@ -18,47 +20,10 @@ confinement: strict
 license: MIT
 icon: buzz/assets/buzz.svg
 
-architectures:
-  - build-on: amd64
+platforms:
+  amd64:
 
 parts:
-  desktop-qt5:
-    source: https://github.com/ubuntu/snapcraft-desktop-helpers.git
-    source-subdir: qt
-    plugin: make
-    make-parameters: [ "FLAVOR=qt5" ]
-    build-packages:
-      - build-essential
-      - qtbase5-dev
-      - dpkg-dev
-    stage-packages:
-      - libxkbcommon0
-      - fonts-ubuntu
-      - dmz-cursor-theme
-      - light-themes
-      - adwaita-icon-theme
-      - gnome-themes-standard
-      - shared-mime-info
-      - libqt5gui5
-      - libgdk-pixbuf2.0-0
-      - libqt5svg5 # for loading icon themes which are svg
-      - libglib2.0-0
-      - xdg-user-dirs
-    override-prime: |
-      craftctl default
-      glib-compile-schemas usr/share/glib-2.0/schemas
-
-  platform-modules:
-    plugin: nil
-    stage-packages:
-      - appmenu-gtk3-module
-      - libcanberra-gtk3-module
-
-  qt5-gtk-platform:
-    plugin: nil
-    stage-packages:
-      - qt5-gtk-platformtheme
-
   alsa-pulseaudio:
     plugin: dump
     source: .
@@ -78,30 +43,63 @@ parts:
           fallback "sysdefault"
       }
       EOF
+    organize:
+      etc/asound.conf: etc/asound.conf
+    stage:
+      - etc/asound.conf
+    prime:
+      - etc/asound.conf
+
+  portaudio:
+    after: [ alsa-pulseaudio ]
+    plugin: autotools
+    source: https://files.portaudio.com/archives/pa_stable_v190700_20210406.tgz
+    build-packages:
+      - libasound2-dev
+      - libpulse-dev
+    autotools-configure-parameters:
+      - --enable-shared
+      - --disable-static
+    stage:
+      - usr/local/lib/libportaudio*
+    prime:
+      - usr/local/lib/libportaudio*
 
   buzz:
-    plugin: python
+    after: [ alsa-pulseaudio, portaudio ]
+    plugin: uv
     source: .
+    build-snaps:
+      - astral-uv
+    stage-snaps:
+      - astral-uv
     build-packages:
+      - wget
       - portaudio19-dev
+      - qt6-declarative-dev
+      - qt6-multimedia-dev
+      - libvulkan-dev
+      - ccache
+      - cmake
+      - python3
+    build-environment:
+      - UV_PYTHON: python3
+      - UV_NO_CACHE: "true"
+      - UV_HTTP_TIMEOUT: "120"
     stage-packages:
+      - python3
+      - libgcc-s1
+      - libc6
+      - libproxy1v5
       # Audio
       - ffmpeg
-      - libportaudio2
       - libpulse0
-      - libasound2
+      - libasound2t64
+      - libasound2-dev
       - libasound2-plugins
       - libasound2-plugins-extra
       - libyaml-dev
-      - libegl1-mesa
-      - gstreamer1.0-plugins-good
-      - gstreamer1.0-plugins-base-apps
-      - gstreamer1.0-pulseaudio
-      - libgstreamer1.0-0
-      - libgstreamer-plugins-base1.0-0
-      - libgstreamer-plugins-good1.0-0
-      - qt6-declarative-dev
-      - qt6-multimedia-dev
+      - liboss4-salsa2
       # Display
       - libxkbcommon-x11-0
       - libxcb-icccm4
@@ -114,41 +112,71 @@ parts:
       - libxcb-cursor0
       # GPU
       - libglu1-mesa
+      - libvulkan1
+      - mesa-vulkan-drivers
     override-build: |
-      craftctl default
-      pip install poetry
-      make translation_mo
-      pip install .
-      pip uninstall -y ctranslate2
-      pip install https://github.com/raivisdejus/CTranslate2-no-execstack/releases/download/v4.2.1/ctranslate2-4.2.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
-      python3 build.py
-      mkdir $CRAFT_PART_INSTALL/buzz
-      cp $CRAFT_PART_BUILD/buzz/whisper_cpp.py $CRAFT_PART_INSTALL/buzz/
-      cp $CRAFT_PART_BUILD/buzz/libwhisper.so $CRAFT_PART_INSTALL/buzz/
-    after: [ desktop-qt5 ]
+      wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc
+      wget -qO /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list
+      apt update
+      apt install -y vulkan-sdk
 
-  desktop-file:
+      # Clear cache to save space on CI
+      apt clean
+
+      # Run default build steps
+      craftctl default
+
+      # Clean caches
+      uv cache clean
+
+      # Create launcher wrapper to ensure the snap's own portaudio and libasound are found
+      # before gnome content snap libraries (which desktop-launch prepends to LD_LIBRARY_PATH)
+      mkdir -p $CRAFT_PART_INSTALL/bin
+      printf '#!/bin/sh\nexport LD_LIBRARY_PATH="$SNAP/usr/local/lib:$SNAP/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"\nexec "$SNAP/bin/python" -m buzz "$@"\n' > $CRAFT_PART_INSTALL/bin/buzz-launcher
+      chmod +x $CRAFT_PART_INSTALL/bin/buzz-launcher
+
+      # Copy source files
+      cp -r $CRAFT_PART_BUILD/buzz $CRAFT_PART_INSTALL/
+      cp -r $CRAFT_PART_BUILD/ctc_forced_aligner $CRAFT_PART_INSTALL/
+      cp -r $CRAFT_PART_BUILD/deepmultilingualpunctuation $CRAFT_PART_INSTALL/
+      cp -r $CRAFT_PART_BUILD/demucs_repo $CRAFT_PART_INSTALL/
+      cp -r $CRAFT_PART_BUILD/whisper_diarization $CRAFT_PART_INSTALL/
+
+      # Create desktop file
+      mkdir -p $CRAFT_PART_INSTALL/usr/share/applications
+      cp $CRAFT_PART_BUILD/buzz.desktop $CRAFT_PART_INSTALL/usr/share/applications/
+    stage:
+      - '*'
+    prime:
+      - '*'
+
+  gpu-2404:
+    after: [ buzz ]
+    source: https://github.com/canonical/gpu-snap.git
     plugin: dump
-    source: .
-    organize:
-      buzz.desktop: usr/share/applications/buzz.desktop
+    override-prime: |
+      craftctl default
+      ${CRAFT_PART_SRC}/bin/gpu-2404-cleanup mesa-2404
+      # Workaround for https://bugs.launchpad.net/snapd/+bug/2055273
+      mkdir -p "${CRAFT_PRIME}/gpu-2404"
+    prime:
+      - bin/gpu-2404-wrapper
 
 apps:
   buzz:
-    command: bin/desktop-launch python3 -m buzz
+    extensions:
+      - gnome
+    command-chain:
+      - bin/gpu-2404-wrapper
+    command: snap/command-chain/desktop-launch $SNAP/bin/buzz-launcher
     desktop: usr/share/applications/buzz.desktop
     environment:
       PATH: $SNAP/usr/bin:$SNAP/bin:$PATH
-      LD_LIBRARY_PATH: $SNAP/lib/python3.10/site-packages/nvidia/cudnn/lib:$SNAP/lib/python3.10/site-packages/PyQt6:$SNAP/lib/python3.10/site-packages/PyQt6/Qt6/lib:$SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/lapack:$SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/blas:$SNAP:$LD_LIBRARY_PATH
-      PYTHONPATH: $SNAP/lib/python3.10/site-packages/PyQt6:$SNAP/lib/python3.10/site-packages/PyQt6/Qt6/lib:$SNAP/usr/lib/python3/dist-packages:$SNAP/usr/lib/python3.10/site-packages:$SNAP/usr/local/lib/python3.10/dist-packages:$SNAP/usr/lib/python3.10/dist-packages:$PYTHONPATH
-      # Fallback to XWayland if running in a Wayland session.
-      DISABLE_WAYLAND: 1
-      # Use GTK3 cursor theme, icon theme and open/save file dialogs.
-      QT_QPA_PLATFORMTHEME: gtk3
-      QT_MEDIA_BACKEND: gstreamer
+      LD_LIBRARY_PATH: $SNAP/usr/local/lib:$SNAP/lib/python3.12/site-packages/nvidia/cudnn/lib:$SNAP/lib/python3.12/site-packages/PyQt6:$SNAP/lib/python3.12/site-packages/PyQt6/Qt6/lib:$SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/lapack:$SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/blas:$SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/oss4-libsalsa:$SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/libproxy:$SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/alsa-lib:$SNAP:$LD_LIBRARY_PATH
+      PYTHONPATH: $SNAP:$SNAP/lib/python3.12/site-packages/PyQt6:$SNAP/lib/python3.12/site-packages/PyQt6/Qt6/lib:$SNAP/usr/lib/python3/dist-packages:$SNAP/usr/lib/python3.12/site-packages:$SNAP/usr/local/lib/python3.12/dist-packages:$SNAP/usr/lib/python3.12/dist-packages:$PYTHONPATH
+      QT_MEDIA_BACKEND: ffmpeg
+      PULSE_LATENCY_MSEC: "30"
       ALSA_CONFIG_PATH: $SNAP/etc/asound.conf
-      XDG_CONFIG_DIRS: $SNAP/etc/xdg:$XDG_CONFIG_DIRS
-      XDG_DATA_DIRS: $SNAP/usr/share:$XDG_DATA_DIRS
     plugs:
       - x11
       - unity7
@@ -163,26 +191,9 @@ apps:
       - removable-media
       - audio-playback
       - audio-record
+      # Fallback for keyring support if secrets portal is missing, user has to connect this manually
       - password-manager-service
 
-plugs:
-  gtk-2-engines:
-    interface: content
-    target: $SNAP/lib/gtk-2.0
-    default-provider: gtk2-common-themes
-  gtk-3-themes:
-    interface: content
-    target: $SNAP/share/themes
-    default-provider: gtk-common-themes
-  icon-themes:
-    interface: content
-    target: $SNAP/share/icons
-    default-provider: gtk-common-themes
-  sound-themes:
-    interface: content
-    target: $SNAP/share/sounds
-    default-provider: gtk-common-themes
-
 layout:
-  /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/alsa-lib:
-    bind: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/alsa-lib
+  /usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/alsa-lib:
+    bind: $SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/alsa-lib
