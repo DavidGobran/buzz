@@ -45,6 +45,9 @@ jobs:
           architecture: 'x64'
           github-token: ${{ github.server_url == 'https://github.com' && github.token || '' }}
 
+      - name: Generate poetry.lock
+        run: poetry lock
+        
       - name: Install dependencies
         run: poetry install
 
