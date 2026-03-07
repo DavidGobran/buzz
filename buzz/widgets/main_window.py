@@ -1,6 +1,5 @@
 import os
 import logging
-import keyring
 from typing import Tuple, List, Optional
 from uuid import UUID
 
@@ -25,6 +24,8 @@ from buzz.db.service.transcription_service import TranscriptionService
 from buzz.file_transcriber_queue_worker import FileTranscriberQueueWorker
 from buzz.locale import _
 from buzz.settings.settings import APP_NAME, Settings
+from buzz.update_checker import UpdateChecker, UpdateInfo
+from buzz.widgets.update_dialog import UpdateDialog
 from buzz.settings.shortcuts import Shortcuts
 from buzz.store.keyring_store import set_password, Key
 from buzz.transcriber.transcriber import (
@@ -38,11 +39,11 @@ from buzz.widgets.icon import BUZZ_ICON_PATH
 from buzz.widgets.import_url_dialog import ImportURLDialog
 from buzz.widgets.main_window_toolbar import MainWindowToolbar
 from buzz.widgets.menu_bar import MenuBar
-from buzz.widgets.snap_notice import SnapNotice
 from buzz.widgets.preferences_dialog.models.preferences import Preferences
 from buzz.widgets.transcriber.file_transcriber_widget import FileTranscriberWidget
 from buzz.widgets.transcription_task_folder_watcher import (
     TranscriptionTaskFolderWatcher,
+    SUPPORTED_EXTENSIONS,
 )
 from buzz.widgets.transcription_tasks_table_widget import (
     TranscriptionTasksTableWidget,
@@ -71,6 +72,9 @@ class MainWindow(QMainWindow):
         self.quit_on_complete = False
         self.transcription_service = transcription_service
 
+        #update checker
+        self._update_info: Optional[UpdateInfo] = None
+
         self.toolbar = MainWindowToolbar(shortcuts=self.shortcuts, parent=self)
         self.toolbar.new_transcription_action_triggered.connect(
             self.on_new_transcription_action_triggered
@@ -88,6 +92,7 @@ class MainWindow(QMainWindow):
             self.on_stop_transcription_action_triggered
         )
         self.addToolBar(self.toolbar)
+        self.toolbar.update_action_triggered.connect(self.on_update_action_triggered)
         self.setUnifiedTitleAndToolBarOnMac(True)
 
         self.preferences = self.load_preferences(settings=self.settings)
@@ -102,6 +107,9 @@ class MainWindow(QMainWindow):
         self.menu_bar.import_url_action_triggered.connect(
             self.on_new_url_transcription_action_triggered
         )
+        self.menu_bar.import_folder_action_triggered.connect(
+            self.on_import_folder_action_triggered
+        )
         self.menu_bar.shortcuts_changed.connect(self.on_shortcuts_changed)
         self.menu_bar.openai_api_key_changed.connect(
             self.on_openai_access_token_changed
@@ -110,8 +118,10 @@ class MainWindow(QMainWindow):
         self.setMenuBar(self.menu_bar)
 
         self.table_widget = TranscriptionTasksTableWidget(self)
+        self.table_widget.transcription_service = self.transcription_service
         self.table_widget.doubleClicked.connect(self.on_table_double_clicked)
         self.table_widget.return_clicked.connect(self.open_transcript_viewer)
+        self.table_widget.delete_requested.connect(self.on_clear_history_action_triggered)
         self.table_widget.selectionModel().selectionChanged.connect(
             self.on_table_selection_changed
         )
@@ -152,18 +162,8 @@ class MainWindow(QMainWindow):
 
         self.transcription_viewer_widget = None
 
-        # TODO Move this to the first user interaction with OpenAI api Key field
-        #  that is the only place that needs access to password manager service
-        if os.environ.get('SNAP_NAME', '') == 'buzz':
-            logging.debug("Running in a snap environment")
-            self.check_linux_permissions()
-
-    def check_linux_permissions(self):
-        try:
-            _ = keyring.get_password(APP_NAME, username="random")
-        except Exception:
-            snap_notice = SnapNotice(self)
-            snap_notice.show()
+        #Initialize and run update checker
+        self._init_update_checker()
 
     def on_preferences_changed(self, preferences: Preferences):
         self.preferences = preferences
@@ -267,6 +267,20 @@ class MainWindow(QMainWindow):
         url = ImportURLDialog.prompt(parent=self)
         if url is not None:
             self.open_file_transcriber_widget(url=url)
+
+    def on_import_folder_action_triggered(self):
+        folder = QFileDialog.getExistingDirectory(self, _("Select folder"))
+        if not folder:
+            return
+        file_paths = []
+        for dirpath, _dirs, filenames in os.walk(folder):
+            for filename in filenames:
+                ext = os.path.splitext(filename)[1].lower()
+                if ext in SUPPORTED_EXTENSIONS:
+                    file_paths.append(os.path.join(dirpath, filename))
+        if not file_paths:
+            return
+        self.open_file_transcriber_widget(file_paths)
 
     def open_file_transcriber_widget(
         self, file_paths: Optional[List[str]] = None, url: Optional[str] = None
@@ -397,6 +411,14 @@ class MainWindow(QMainWindow):
         pass
 
     def on_task_completed(self, task: FileTranscriptionTask, segments: List[Segment]):
+        # Update file path in database only for URL imports where file is downloaded
+        if task.source == FileTranscriptionTask.Source.URL_IMPORT and task.file_path:
+            logging.debug(f"Updating transcription file path: {task.file_path}")
+            # Use the file basename (video title) as the display name
+            basename = os.path.basename(task.file_path)
+            name = os.path.splitext(basename)[0]  # Remove .wav extension
+            self.transcription_service.update_transcription_file_and_name(task.uid, task.file_path, name)
+
         self.transcription_service.update_transcription_as_completed(task.uid, segments)
         self.table_widget.refresh_row(task.uid)
 
@@ -422,13 +444,47 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         self.save_geometry()
+        self.settings.settings.sync()
+
+        if self.folder_watcher:
+            try:
+                self.folder_watcher.task_found.disconnect()
+                if len(self.folder_watcher.directories()) > 0:
+                    self.folder_watcher.removePaths(self.folder_watcher.directories())
+            except Exception as e:
+                logging.warning(f"Error cleaning up folder watcher: {e}")
+
+        try:
+            self.transcriber_worker.task_started.disconnect()
+            self.transcriber_worker.task_progress.disconnect()
+            self.transcriber_worker.task_download_progress.disconnect()
+            self.transcriber_worker.task_error.disconnect()
+            self.transcriber_worker.task_completed.disconnect()
+        except Exception as e:
+            logging.warning(f"Error disconnecting signals: {e}")
 
         self.transcriber_worker.stop()
         self.transcriber_thread.quit()
-        self.transcriber_thread.wait()
+
+        if self.transcriber_thread.isRunning():
+            if not self.transcriber_thread.wait(10000):
+                logging.warning("Transcriber thread did not finish within 10s timeout, terminating")
+                self.transcriber_thread.terminate()
+                if not self.transcriber_thread.wait(2000):
+                    logging.error("Transcriber thread could not be terminated")
 
         if self.transcription_viewer_widget is not None:
             self.transcription_viewer_widget.close()
+
+        try:
+            from buzz.widgets.application import Application
+            app = Application.instance()
+            if app and hasattr(app, 'close_database'):
+                app.close_database()
+        except Exception as e:
+            logging.warning(f"Error closing database: {e}")
+
+        logging.debug("MainWindow closeEvent completed")
 
         super().closeEvent(event)
 
@@ -446,3 +502,27 @@ class MainWindow(QMainWindow):
             self.setBaseSize(1240, 600)
             self.resize(1240, 600)
         self.settings.end_group()
+
+    def _init_update_checker(self):
+        """Initializes and runs the update checker."""
+        self.update_checker = UpdateChecker(settings=self.settings, parent=self)
+        self.update_checker.update_available.connect(self._on_update_available)
+
+        # Check for updates on startup
+        self.update_checker.check_for_updates()
+
+    def _on_update_available(self, update_info: UpdateInfo):
+        """Called when an update is available."""
+        self._update_info = update_info
+        self.toolbar.set_update_available(True)
+
+    def on_update_action_triggered(self):
+        """Called when user clicks the update action in toolbar."""
+        if self._update_info is None:
+            return
+
+        dialog = UpdateDialog(
+            update_info=self._update_info,
+            parent=self
+        )
+        dialog.exec()

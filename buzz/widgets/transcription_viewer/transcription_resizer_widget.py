@@ -36,9 +36,11 @@ from buzz.widgets.preferences_dialog.models.file_transcription_preferences impor
 
 SENTENCE_END = re.compile(r'.*[.!?。！？]')
 
+# Languages that don't use spaces between words
+NON_SPACE_LANGUAGES = {"zh", "ja", "th", "lo", "km", "my"}
+
 class TranscriptionWorker(QObject):
-    finished = pyqtSignal()
-    result_ready = pyqtSignal(list)
+    finished = pyqtSignal(list)
 
     def __init__(self, transcription, transcription_options, transcription_service, regroup_string: str):
         super().__init__()
@@ -52,16 +54,23 @@ class TranscriptionWorker(QObject):
             transcription_id=self.transcription.id_as_uuid
         )
 
+        # Check if the language uses spaces between words
+        language = self.transcription.language or ""
+        is_non_space_language = language in NON_SPACE_LANGUAGES
+
+        # For non-space languages, don't add spaces between words
+        separator = "" if is_non_space_language else " "
+
         segments = []
         words = []
         text = ""
         for buzz_segment in buzz_segments:
             words.append({
-                'word': buzz_segment.text + " ",
+                'word': buzz_segment.text + separator,
                 'start': buzz_segment.start_time / 100,
                 'end': buzz_segment.end_time / 100,
             })
-            text += buzz_segment.text + " "
+            text += buzz_segment.text + separator
 
             if SENTENCE_END.match(buzz_segment.text):
                 segments.append({
@@ -70,6 +79,13 @@ class TranscriptionWorker(QObject):
                 })
                 words = []
                 text = ""
+
+        # Add any remaining words that weren't terminated by sentence-ending punctuation
+        if words:
+            segments.append({
+                'text': text,
+                'words': words
+            })
 
         return {
             'language': self.transcription.language,
@@ -85,14 +101,17 @@ class TranscriptionWorker(QObject):
         if self.transcription_options.extract_speech and os.path.exists(speech_path):
             transcription_file = str(speech_path)
             transcription_file_exists = True
+        # TODO - Fix VAD and Silence suppression that fails to work/download Vad model in compilded form on Mac and Windows
 
         try:
             result = stable_whisper.transcribe_any(
                 self.get_transcript,
                 audio = whisper_audio.load_audio(transcription_file),
                 input_sr=whisper_audio.SAMPLE_RATE,
-                vad=transcription_file_exists,
-                suppress_silence=transcription_file_exists,
+                # vad=transcription_file_exists,
+                # suppress_silence=transcription_file_exists,
+                vad=False,
+                suppress_silence=False,
                 regroup=self.regroup_string,
                 check_sorted=False,
             )
@@ -110,8 +129,7 @@ class TranscriptionWorker(QObject):
                 )
             )
 
-        self.result_ready.emit(segments)
-        self.finished.emit()
+        self.finished.emit(segments)
 
 
 class TranscriptionResizerWidget(QWidget):
@@ -152,6 +170,38 @@ class TranscriptionResizerWidget(QWidget):
 
         layout = QFormLayout(self)
 
+        # Extend segment endings
+        extend_label = QLabel(_("Extend end time"), self)
+        font = extend_label.font()
+        font.setWeight(QFont.Weight.Bold)
+        extend_label.setFont(font)
+        layout.addRow(extend_label)
+
+        extend_group_box = QGroupBox(self)
+        extend_layout = QVBoxLayout(extend_group_box)
+
+        self.extend_row = QHBoxLayout()
+
+        self.extend_amount_label = QLabel(_("Extend endings by up to (seconds)"), self)
+
+        self.extend_amount_input = LineEdit("0.2", self)
+        self.extend_amount_input.setMaximumWidth(60)
+
+        self.extend_button = QPushButton(_("Extend endings"))
+        self.extend_button.clicked.connect(self.on_extend_button_clicked)
+
+        self.extend_row.addWidget(self.extend_amount_label)
+        self.extend_row.addWidget(self.extend_amount_input)
+        self.extend_row.addWidget(self.extend_button)
+
+        extend_layout.addLayout(self.extend_row)
+
+        layout.addRow(extend_group_box)
+
+        # Spacer
+        spacer1 = QSpacerItem(0, 10, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        layout.addItem(spacer1)
+
         # Resize longer subtitles
         resize_label = QLabel(_("Resize Options"), self)
         font = resize_label.font()
@@ -181,12 +231,14 @@ class TranscriptionResizerWidget(QWidget):
         resize_layout.addLayout(self.resize_row)
 
         resize_group_box.setEnabled(self.transcription.word_level_timings != 1)
+        if self.transcription.word_level_timings == 1:
+            resize_group_box.setToolTip(_("Available only if word level timings were disabled during transcription"))
 
         layout.addRow(resize_group_box)
 
         # Spacer
-        spacer = QSpacerItem(0, 10, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
-        layout.addItem(spacer)
+        spacer2 = QSpacerItem(0, 10, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        layout.addItem(spacer2)
 
         # Merge words into subtitles
         merge_options_label = QLabel(_("Merge Options"), self)
@@ -236,6 +288,8 @@ class TranscriptionResizerWidget(QWidget):
         merge_options_layout.addLayout(self.merge_options_row)
 
         merge_options_group_box.setEnabled(self.transcription.word_level_timings == 1)
+        if self.transcription.word_level_timings != 1:
+            merge_options_group_box.setToolTip(_("Available only if word level timings were enabled during transcription"))
 
         layout.addRow(merge_options_group_box)
 
@@ -291,6 +345,44 @@ class TranscriptionResizerWidget(QWidget):
         if self.transcriptions_updated_signal:
             self.transcriptions_updated_signal.emit(new_transcript_id)
 
+    def on_extend_button_clicked(self):
+        try:
+            extend_amount_seconds = float(self.extend_amount_input.text())
+        except ValueError:
+            extend_amount_seconds = 0.2
+
+        # Convert seconds to milliseconds (internal time unit)
+        extend_amount = int(extend_amount_seconds * 1000)
+
+        segments = self.transcription_service.get_transcription_segments(
+            transcription_id=self.transcription.id_as_uuid
+        )
+
+        extended_segments = []
+        for i, segment in enumerate(segments):
+            new_end = segment.end_time + extend_amount
+
+            # Ensure segment end doesn't exceed start of next segment
+            if i < len(segments) - 1:
+                next_start = segments[i + 1].start_time
+                new_end = min(new_end, next_start)
+
+            extended_segments.append(
+                Segment(
+                    start=segment.start_time,
+                    end=new_end,
+                    text=segment.text
+                )
+            )
+
+        new_transcript_id = self.transcription_service.copy_transcription(
+            self.transcription.id_as_uuid
+        )
+        self.transcription_service.update_transcription_as_completed(new_transcript_id, extended_segments)
+
+        if self.transcriptions_updated_signal:
+            self.transcriptions_updated_signal.emit(new_transcript_id)
+
     def on_merge_button_clicked(self):
         self.new_transcript_id = self.transcription_service.copy_transcription(
             self.transcription.id_as_uuid
@@ -317,14 +409,6 @@ class TranscriptionResizerWidget(QWidget):
                 regroup_string += '_'
             regroup_string += f'sl={self.split_by_max_length_input.text()}'
 
-        if self.merge_by_gap.isChecked():
-            if regroup_string:
-                regroup_string += '_'
-            regroup_string += f'mg={self.merge_by_gap_input.text()}'
-
-            if self.split_by_max_length.isChecked():
-                regroup_string += f'++{self.split_by_max_length_input.text()}+1'
-
         regroup_string = os.getenv("BUZZ_MERGE_REGROUP_RULE", regroup_string)
 
         self.hide()
@@ -341,7 +425,7 @@ class TranscriptionResizerWidget(QWidget):
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
         self.thread.finished.connect(self.thread.deleteLater)
-        self.worker.result_ready.connect(self.on_transcription_completed)
+        self.worker.finished.connect(self.on_transcription_completed)
 
         self.thread.start()
 

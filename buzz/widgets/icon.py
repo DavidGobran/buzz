@@ -82,11 +82,41 @@ class ResizeIcon(Icon):
     def __init__(self, parent: QWidget):
         super().__init__(get_path("assets/resize_black.svg"), parent)
 
+class SpeakerIdentificationIcon(Icon):
+    def __init__(self, parent: QWidget):
+        super().__init__(get_path("assets/speaker-identification.svg"), parent)
+
 class VisibilityIcon(Icon):
     def __init__(self, parent: QWidget):
         super().__init__(
             get_path("assets/visibility_FILL0_wght700_GRAD0_opsz48.svg"), parent
         )
+
+
+class ScrollToCurrentIcon(Icon):
+    def __init__(self, parent: QWidget):
+        super().__init__(
+            get_path("assets/visibility_FILL0_wght700_GRAD0_opsz48.svg"), parent
+        )
+
+class NewWindowIcon(Icon):
+    def __init__(self, parent: QWidget):
+        super().__init__(get_path("assets/icons/new-window.svg"), parent)
+
+
+class FullscreenIcon(Icon):
+    def __init__(self, parent: QWidget):
+        super().__init__(get_path("assets/icons/fullscreen.svg"), parent)
+
+
+class ColorBackgroundIcon(Icon):
+    def __init__(self, parent: QWidget):
+        super().__init__(get_path("assets/icons/color-background.svg"), parent)
+
+
+class TextColorIcon(Icon):
+    def __init__(self, parent: QWidget):
+        super().__init__(get_path("assets/icons/gui-text-color.svg"), parent)
 
 
 BUZZ_ICON_PATH = get_path("assets/buzz.ico")
@@ -99,3 +129,4 @@ ADD_ICON_PATH = get_path("assets/add_FILL0_wght700_GRAD0_opsz48.svg")
 URL_ICON_PATH = get_path("assets/url.svg")
 TRASH_ICON_PATH = get_path("assets/delete_FILL0_wght700_GRAD0_opsz48.svg")
 CANCEL_ICON_PATH = get_path("assets/cancel_FILL0_wght700_GRAD0_opsz48.svg")
+UPDATE_ICON_PATH = get_path("assets/update_FILL0_wght700_GRAD0_opsz48.svg")

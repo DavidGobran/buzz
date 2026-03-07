@@ -4,17 +4,36 @@ import os
 import sys
 import subprocess
 import tempfile
+
+from pathlib import Path
 from typing import Optional, List
 
 from PyQt6.QtCore import QObject
 from openai import OpenAI
 
 from buzz.settings.settings import Settings
-from buzz.model_loader import get_custom_api_whisper_model
-from buzz.transcriber.file_transcriber import FileTranscriber
+from buzz.transcriber.file_transcriber import FileTranscriber, app_env
 from buzz.transcriber.transcriber import FileTranscriptionTask, Segment, Task
-from buzz.transcriber.whisper_cpp import append_segment
 
+
+def append_segment(result, txt: bytes, start: int, end: int):
+    if txt == b'':
+        return True
+
+    # try-catch will guard against multi-byte utf-8 characters
+    # https://github.com/ggerganov/whisper.cpp/issues/1798
+    try:
+        result.append(
+            Segment(
+                start=start * 10,  # centisecond to ms
+                end=end * 10,  # centisecond to ms
+                text=txt.decode("utf-8"),
+            )
+        )
+
+        return True
+    except UnicodeDecodeError:
+        return False
 
 class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
     def __init__(self, task: FileTranscriptionTask, parent: Optional["QObject"] = None):
@@ -26,9 +45,12 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
         self.task = task.transcription_options.task
         self.openai_client = OpenAI(
             api_key=self.transcription_task.transcription_options.openai_access_token,
-            base_url=custom_openai_base_url if custom_openai_base_url else None
+            base_url=custom_openai_base_url if custom_openai_base_url else None,
+            max_retries=0
         )
-        self.whisper_api_model = get_custom_api_whisper_model(custom_openai_base_url)
+        self.whisper_api_model = settings.value(
+            key=Settings.Key.OPENAI_API_MODEL, default_value="whisper-1"
+        )
         self.word_level_timings = self.transcription_task.transcription_options.word_level_timings
         logging.debug("Will use whisper API on %s, %s",
                       custom_openai_base_url, self.whisper_api_model)
@@ -41,6 +63,7 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
         )
 
         mp3_file = tempfile.mktemp() + ".mp3"
+        mp3_file = str(Path(mp3_file).resolve())
 
         cmd = [
             "ffmpeg",
@@ -53,7 +76,13 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
             si = subprocess.STARTUPINFO()
             si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             si.wShowWindow = subprocess.SW_HIDE
-            result = subprocess.run(cmd, capture_output=True, startupinfo=si)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                startupinfo=si,
+                env=app_env,
+                creationflags = subprocess.CREATE_NO_WINDOW
+            )
         else:
             result = subprocess.run(cmd, capture_output=True)
 
@@ -80,7 +109,14 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
             si.wShowWindow = subprocess.SW_HIDE
 
             duration_secs = float(
-                subprocess.run(cmd, capture_output=True, check=True, startupinfo=si).stdout.decode("utf-8")
+                subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    check=True,
+                    startupinfo=si,
+                    env=app_env,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                ).stdout.decode("utf-8"),
             )
         else:
             duration_secs = float(
@@ -107,6 +143,7 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
             chunk_end = min((i + 1) * chunk_duration, duration_secs)
 
             chunk_file = tempfile.mktemp() + ".mp3"
+            chunk_file = str(Path(chunk_file).resolve())
 
             # fmt: off
             cmd = [
@@ -122,7 +159,14 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
                 si = subprocess.STARTUPINFO()
                 si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 si.wShowWindow = subprocess.SW_HIDE
-                subprocess.run(cmd, capture_output=True, check=True, startupinfo=si)
+                subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    check=True,
+                    startupinfo=si,
+                    env=app_env,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
             else:
                 subprocess.run(cmd, capture_output=True, check=True)
 
@@ -139,17 +183,22 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
         return segments
 
     @staticmethod
-    def get_value(segment, key):
+    def get_value(segment, key, default=None):
         if hasattr(segment, key):
             return getattr(segment, key)
-        return segment[key]
+        if isinstance(segment, dict):
+            return segment.get(key, default)
+        return default
 
     def get_segments_for_file(self, file: str, offset_ms: int = 0):
         with open(file, "rb") as file:
+            # gpt-4o models don't support verbose_json format
+            response_format = "json" if self.whisper_api_model.startswith("gpt-4o") else "verbose_json"
+
             options = {
                 "model": self.whisper_api_model,
                 "file": file,
-                "response_format": "verbose_json",
+                "response_format": response_format,
                 "prompt": self.transcription_task.transcription_options.initial_prompt,
             }
 
@@ -168,14 +217,15 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
             segments = getattr(transcript, "segments", None)
 
             words = getattr(transcript, "words", None)
-            if "words" is None and "words" in transcript.model_extra:
+            if words is None and "words" in transcript.model_extra:
                 words = transcript.model_extra["words"]
 
             if segments is None:
                 if "segments" in transcript.model_extra:
                     segments = transcript.model_extra["segments"]
                 else:
-                    segments = [{"words": words}]
+                    # gpt-4o models return only text without segments/timestamps
+                    segments = [{"text": transcript.text, "start": 0, "end": 0, "words": words}]
 
             result_segments = []
             if self.word_level_timings:
@@ -230,9 +280,9 @@ class OpenAIWhisperAPIFileTranscriber(FileTranscriber):
             else:
                 result_segments = [
                     Segment(
-                        int(self.get_value(segment, "start") * 1000 + offset_ms),
-                        int(self.get_value(segment,"end") * 1000 + offset_ms),
-                        self.get_value(segment,"text"),
+                        int(self.get_value(segment, "start", 0) * 1000 + offset_ms),
+                        int(self.get_value(segment, "end", 0) * 1000 + offset_ms),
+                        self.get_value(segment, "text", ""),
                     )
                     for segment in segments
                 ]

@@ -2,7 +2,7 @@
 
 # Buzz
 
-[Documentation](https://chidiwilliams.github.io/buzz/) | [Buzz Captions on the App Store](https://apps.apple.com/us/app/buzz-captions/id6446018936?mt=12&itsct=apps_box_badge&itscg=30200)
+[Documentation](https://chidiwilliams.github.io/buzz/)
 
 Transcribe and translate audio offline on your personal computer. Powered by
 OpenAI's [Whisper](https://github.com/openai/whisper).
@@ -13,56 +13,35 @@ OpenAI's [Whisper](https://github.com/openai/whisper).
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/chidiwilliams/buzz)
 [![Github all releases](https://img.shields.io/github/downloads/chidiwilliams/buzz/total.svg)](https://GitHub.com/chidiwilliams/buzz/releases/)
 
-<blockquote>
-<p>Buzz is better on the App Store. Get a Mac-native version of Buzz with a cleaner look, audio playback, drag-and-drop import, transcript editing, search, and much more.</p>
-<a href="https://apps.apple.com/us/app/buzz-captions/id6446018936?mt=12&amp;itsct=apps_box_badge&amp;itscg=30200"><img src="https://toolbox.marketingtools.apple.com/api/badges/download-on-the-mac-app-store/black/en-us?size=250x83&amp;releaseDate=1679529600" alt="Download on the Mac App Store" /></a>
-</blockquote>
+![Buzz](https://raw.githubusercontent.com/chidiwilliams/buzz/refs/heads/main/buzz/assets/buzz-banner.jpg)
 
-![Buzz](./buzz/assets/buzz-banner.jpg)
+## Features
+- Transcribe audio and video files or Youtube links
+- Live realtime audio transcription from microphone
+  - Presentation window for easy accessibility during events and presentations
+- Speech separation before transcription for better accuracy on noisy audio
+- Speaker identification in transcribed media
+- Multiple whisper backend support
+  - CUDA acceleration support for Nvidia GPUs
+  - Apple Silicon support for Macs
+  - Vulkan acceleration support for Whisper.cpp on most GPUs, including integrated GPUs
+- Export transcripts to TXT, SRT, and VTT
+- Advanced Transcription Viewer with search, playback controls, and speed adjustment
+- Keyboard shortcuts for efficient navigation
+- Watch folder for automatic transcription of new files
+- Command-Line Interface for scripting and automation
 
 ## Installation
 
-### PyPI
-
-Install [ffmpeg](https://www.ffmpeg.org/download.html)
-
-Install Buzz
-
-```shell
-pip install buzz-captions
-python -m buzz
-```
-
 ### macOS
 
-Install with [brew utility](https://brew.sh/)
-
-```shell
-brew install --cask buzz
-```
-
-Or download the `.dmg` from the [releases page](https://github.com/chidiwilliams/buzz/releases/latest).
+Download the `.dmg` from the [SourceForge](https://sourceforge.net/projects/buzz-captions/files/).
 
 ### Windows
 
-Download and run the `.exe` from the [releases page](https://github.com/chidiwilliams/buzz/releases/latest).
+Get the installation files from the [SourceForge](https://sourceforge.net/projects/buzz-captions/files/).
 
 App is not signed, you will get a warning when you install it. Select `More info` -> `Run anyway`.
-
-**Alternatively, install with [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/)**
-
-```shell
-winget install ChidiWilliams.Buzz
-```
-
-**GPU support for PyPI**
-
-To have GPU support for Nvidia GPUS on Windows, for PyPI installed version ensure, CUDA support for [torch](https://pytorch.org/get-started/locally/) 
-
-```
-pip3 uninstall torch torchaudio
-pip3 install torch==2.2.2+cu121 torchaudio==2.2.2+cu121 nvidia-cublas-cu12==12.1.3.1 nvidia-cuda-cupti-cu12==12.1.105 nvidia-cuda-nvrtc-cu12==12.1.105 nvidia-cuda-runtime-cu12==12.1.105 nvidia-cufft-cu12==11.0.2.54 nvidia-curand-cu12==10.3.2.106 nvidia-cusolver-cu12==11.4.5.107 nvidia-cusparse-cu12==12.1.0.106 nvidia-nccl-cu12==2.19.3 nvidia-nvtx-cu12==12.1.105  --extra-index-url https://download.pytorch.org/whl/cu121 --extra-index-url https://pypi.ngc.nvidia.com
-```
 
 ### Linux
 
@@ -73,23 +52,55 @@ To install flatpak, run:
 flatpak install flathub io.github.chidiwilliams.Buzz
 ```
 
+[![Download on Flathub](https://flathub.org/api/badge?svg&locale=en)](https://flathub.org/en/apps/io.github.chidiwilliams.Buzz)
+
 To install snap, run:
 ```shell
 sudo apt-get install libportaudio2 libcanberra-gtk-module libcanberra-gtk3-module
 sudo snap install buzz
-sudo snap connect buzz:password-manager-service
+```
+
+[![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/buzz)
+
+### PyPI
+
+Install [ffmpeg](https://www.ffmpeg.org/download.html)
+
+Ensure you use Python 3.12 environment.
+
+Install Buzz
+
+```shell
+pip install buzz-captions
+python -m buzz
+```
+
+**GPU support for PyPI**
+
+To have GPU support for Nvidia GPUS on Windows, for PyPI installed version ensure, CUDA support for [torch](https://pytorch.org/get-started/locally/) 
+
+```
+pip3 install -U torch==2.8.0+cu129 torchaudio==2.8.0+cu129 --index-url https://download.pytorch.org/whl/cu129
+pip3 install nvidia-cublas-cu12==12.9.1.4 nvidia-cuda-cupti-cu12==12.9.79 nvidia-cuda-runtime-cu12==12.9.79 --extra-index-url https://pypi.ngc.nvidia.com
 ```
 
 ### Latest development version
 
 For info on how to get latest development version with latest features and bug fixes see [FAQ](https://chidiwilliams.github.io/buzz/docs/faq#9-where-can-i-get-latest-development-version).
 
+### Support Buzz
+
+You can help the Buzz by starring 🌟 the repo and sharing it with your friends.
+
 ### Screenshots
 
 <div style="display: flex; flex-wrap: wrap;">
-    <img alt="File import" src="share/screenshots/buzz-1-import.png" style="max-width: 18%; margin-right: 1%;" />
-    <img alt="Main screen" src="share/screenshots/buzz-2-main_screen.png" style="max-width: 18%; margin-right: 1%; height:auto;" />
-    <img alt="Preferences" src="share/screenshots/buzz-3-preferences.png" style="max-width: 18%; margin-right: 1%; height:auto;" />
-    <img alt="Transcript" src="share/screenshots/buzz-4-transcript.png" style="max-width: 18%; margin-right: 1%; height:auto;" />
-    <img alt="Live recording" src="share/screenshots/buzz-5-live_recording.png" style="max-width: 18%;" />
+    <img alt="File import" src="https://github.com/chidiwilliams/buzz/raw/main/share/screenshots/buzz-1-import.png" style="max-width: 18%; margin-right: 1%;" />
+    <img alt="Main screen" src="https://github.com/chidiwilliams/buzz/raw/main/share/screenshots/buzz-2-main_screen.png" style="max-width: 18%; margin-right: 1%; height:auto;" />
+    <img alt="Preferences" src="https://github.com/chidiwilliams/buzz/raw/main/share/screenshots/buzz-3-preferences.png" style="max-width: 18%; margin-right: 1%; height:auto;" />
+    <img alt="Model preferences" src="https://github.com/chidiwilliams/buzz/raw/main/share/screenshots/buzz-3.2-model-preferences.png" style="max-width: 18%; margin-right: 1%; height:auto;" />
+    <img alt="Transcript" src="https://github.com/chidiwilliams/buzz/raw/main/share/screenshots/buzz-4-transcript.png" style="max-width: 18%; margin-right: 1%; height:auto;" />
+    <img alt="Live recording" src="https://github.com/chidiwilliams/buzz/raw/main/share/screenshots/buzz-5-live_recording.png" style="max-width: 18%; margin-right: 1%; height:auto;" />
+    <img alt="Resize" src="https://github.com/chidiwilliams/buzz/raw/main/share/screenshots/buzz-6-resize.png" style="max-width: 18%;" />
 </div>
+
