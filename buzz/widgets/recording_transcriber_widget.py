@@ -12,7 +12,7 @@ from enum import auto
 from typing import Optional, Tuple, Any
 
 from PyQt6.QtCore import QThread, Qt, QThreadPool, QTimer, pyqtSignal
-from PyQt6.QtGui import QTextCursor, QCloseEvent, QColor
+from PyQt6.QtGui import QTextCursor, QCloseEvent, QColor, QFont
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -210,7 +210,10 @@ class RecordingTranscriberWidget(QWidget):
         layout.addWidget(self.transcription_text_box)
         layout.addWidget(self.translation_text_box)
 
-        if not self.transcription_options.enable_llm_translation:
+        if self.transcription_options.enable_llm_translation:
+            self.transcription_text_box.hide()
+            self._apply_translation_text_size()
+        else:
             self.translation_text_box.hide()
 
         self.setLayout(layout)
@@ -335,7 +338,10 @@ class RecordingTranscriberWidget(QWidget):
 
     def on_copy_transcript_clicked(self):
         """Handle copy transcript button click"""
-        transcript_text = self.transcription_text_box.toPlainText().strip()
+        if self.transcription_options.enable_llm_translation:
+            transcript_text = self.translation_text_box.toPlainText().strip()
+        else:
+            transcript_text = self.transcription_text_box.toPlainText().strip()
 
         if not transcript_text:
             self.copy_transcript_button.setText(_("Nothing to copy!"))
@@ -395,11 +401,23 @@ class RecordingTranscriberWidget(QWidget):
         """Handle text size change"""
         def save_settings():
             self.settings.set_value(Settings.Key.PRESENTATION_WINDOW_TEXT_SIZE, value)
+            self._apply_translation_text_size()
             if self.presentation_window:
                 # reload setting to apply new size
                 self.presentation_window.load_settings()
         #Incase user drags slider, Debounce by waiting 100ms before saving
         QTimer.singleShot(100, save_settings)
+
+    def _apply_translation_text_size(self):
+        """Apply the saved text size to the translation text box."""
+        text_size = self.settings.value(
+            Settings.Key.PRESENTATION_WINDOW_TEXT_SIZE,
+            24,
+            int
+        )
+        font = QFont(self.translation_text_box.font())
+        font.setPointSize(text_size)
+        self.translation_text_box.setFont(font)
 
     def on_theme_changed(self, index: int):
         """Handle theme selection change"""
@@ -519,9 +537,12 @@ class RecordingTranscriberWidget(QWidget):
         self.transcription_options = transcription_options
 
         if self.transcription_options.enable_llm_translation:
+            self.transcription_text_box.hide()
             self.translation_text_box.show()
+            self._apply_translation_text_size()
         else:
             self.translation_text_box.hide()
+            self.transcription_text_box.show()
 
         self.reset_transcriber_controls()
 
