@@ -384,9 +384,10 @@ class RecordingTranscriberWidget(QWidget):
             self.fullscreen_button.setEnabled(True)
 
             #Sync current content to presentation window
-            transcript_text = self.transcription_text_box.toPlainText()
-            if transcript_text:
-                self.presentation_window.update_transcripts(transcript_text)
+            if not self.transcription_options.enable_llm_translation:
+                transcript_text = self.transcription_text_box.toPlainText()
+                if transcript_text:
+                    self.presentation_window.update_transcripts(transcript_text)
 
             if self.transcription_options.enable_llm_translation:
                 translation_text = self.translation_text_box.toPlainText()
@@ -994,8 +995,9 @@ class RecordingTranscriberWidget(QWidget):
         elif self.transcriber_mode == RecordingTranscriberMode.APPEND_AND_CORRECT:
             self.process_transcription_merge(text, self.transcripts, self.transcription_text_box, self.transcript_export_file)
 
-        #Update presentation window if it is open
-        if self.presentation_window and self.presentation_window.isVisible():
+        #Update presentation window if it is open (only when translation is not enabled)
+        if (self.presentation_window and self.presentation_window.isVisible()
+                and not self.transcription_options.enable_llm_translation):
             #Get current merged text from the translation box
             current_text = self.transcription_text_box.toPlainText()
             self.presentation_window.update_transcripts(current_text)
