@@ -141,6 +141,8 @@ class PresentationWindow(QWidget):
             return
 
         self._current_translation = text
+        # Hide the original transcript; only show the translation
+        self.transcript_display.hide()
         self.translation_display.show()
 
         escaped_text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

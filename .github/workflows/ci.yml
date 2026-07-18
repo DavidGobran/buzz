@@ -20,11 +20,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15-intel
+          # - os: macos-15-intel
           - os: macos-latest
-          - os: windows-latest
-          - os: ubuntu-22.04
-          - os: ubuntu-latest
+          # - os: windows-latest
+          # - os: ubuntu-22.04
+          # - os: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -114,9 +114,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15-intel
+          # - os: macos-15-intel
           - os: macos-latest
-          - os: windows-latest
+          # - os: windows-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -217,30 +217,15 @@ jobs:
           rm 'C:\selenium\' -r -force
         shell: pwsh
 
+      - name: Install Poetry
+        run: pip install poetry
+
       - name: Bundle
         run: |
           if [ "$RUNNER_OS" == "macOS" ]; then
 
             brew install create-dmg
-
-            sudo pkill -9 XProtect >/dev/null || true;
-            while pgrep XProtect; do sleep 3; done;
-
-            CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-            KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-
-            echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
-
-            security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-            security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-            security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-            security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-            security list-keychain -d user -s $KEYCHAIN_PATH
-
-            xcrun notarytool store-credentials --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" notarytool --validate
-
-            uv run make bundle_mac
+            poetry run make bundle_mac_unsigned
 
           elif [ "$RUNNER_OS" == "Windows" ]; then
 
@@ -248,23 +233,12 @@ jobs:
             uv run make bundle_windows
 
           fi
-        env:
-          BUZZ_CODESIGN_IDENTITY: ${{ secrets.BUZZ_CODESIGN_IDENTITY }}
-          BUZZ_KEYCHAIN_NOTARY_PROFILE: ${{ secrets.BUZZ_KEYCHAIN_NOTARY_PROFILE }}
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         shell: bash
 
       - uses: actions/upload-artifact@v4
         with:
           name: Buzz-${{ runner.os }}-${{ runner.arch }}
           path: |
-            dist/Buzz*-windows.exe
-            dist/Buzz*-windows-*.bin
             dist/Buzz*-mac.dmg
 
   build_wheels:
@@ -274,7 +248,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-15-intel, macos-latest]
+        # os: [ubuntu-latest, windows-latest, macos-15-intel, macos-latest]
+        os: [macos-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -336,9 +311,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15-intel
+          # - os: macos-15-intel
           - os: macos-latest
-          - os: windows-latest
+          # - os: windows-latest
     needs: [build, test]
     if: startsWith(github.ref, 'refs/tags/')
     steps:
