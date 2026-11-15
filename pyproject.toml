@@ -44,7 +44,7 @@ dependencies = [
     "torch==2.8.0; sys_platform != 'darwin'",
     "torchaudio==2.8.0; sys_platform != 'darwin'",
     "ctranslate2>=4.6.2,<5; sys_platform != 'darwin'",
-    # faster whisper need cudnn 9
+    # Use the standard PyPI package; NGC DNS is unavailable on some runners.
     "nvidia-cudnn-cu12>=9,<10; sys_platform != 'darwin'",
     # CUDA runtime libraries are provided by torch dependencies, no need to specify explicitly
     "darkdetect>=0.8.0,<0.9",
@@ -138,12 +138,6 @@ torchaudio = [
     { index = "PyPI", marker = "sys_platform == 'darwin'" },
     { index = "pytorch-cu129", marker = "sys_platform != 'darwin'" },
 ]
-nvidia-cudnn-cu12 = { index = "nvidia", marker = "sys_platform != 'darwin'" }
-
-[[tool.uv.index]]
-name = "nvidia"
-url = "https://pypi.ngc.nvidia.com/"
-explicit = true
 
 [[tool.uv.index]]
 name = "pytorch-cu129"
