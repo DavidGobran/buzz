@@ -378,6 +378,7 @@ jobs:
             Buzz*.dmg
             Buzz*.AppImage
 
+
 #  Brew Cask deployment fails and the app is deprecated on Brew.
 #  deploy_brew_cask:
 #    runs-on: macos-latest
